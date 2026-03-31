@@ -315,6 +315,22 @@
     </div>
     <div class="card">
       <div class="card-header">
+        <h2>精选生肖</h2>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <button class="btn-mini red" data-action="clearSelectedZodiacHistory" style="font-size:11px;">清空</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="selectedZodiacHistoryList">
+          <div class="empty-tip">暂无精选生肖历史</div>
+        </div>
+        <div id="selectedZodiacHistoryToggle" style="display:none;margin-top:8px;">
+          <button class="toggle-btn" data-action="toggleSelectedZodiacHistory" style="width:100%;">展开更多</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
         <h2>预测历史</h2>
         <div style="display:flex;gap:4px;align-items:center;">
           <button class="btn-mini" data-action="togglePredictionFiltersPanel" style="font-size:11px;">选择</button>
@@ -377,17 +393,12 @@
               </div>
             </div>
             <div class="filter-panel-buttons">
-              <button class="btn-mini" data-action="selectAllSpecialFilters" style="font-size:11px;">全选</button>
-              <button class="btn-mini" data-action="resetSpecialFilters" style="font-size:11px;">清空</button>
               <button class="btn-mini" data-action="confirmSpecialFilters" style="background:var(--primary);color:#fff;">确认</button>
             </div>
           </div>
         </div>
         <div id="specialHistoryList">
           <div class="empty-tip">暂无精选特码历史</div>
-        </div>
-        <div id="specialHistoryToggle" style="display:none;margin-top:8px;">
-          <button class="toggle-btn" data-action="toggleSpecialHistory" style="width:100%;">展开更多</button>
         </div>
       </div>
     </div>
@@ -1248,7 +1259,12 @@ const StateManager = {
     // 精选特码历史状态
     specialHistory: [],
     specialHistoryExpanded: false,
-    specialHistoryModeFilter: 'all' // 'all' | 'hot' | 'cold' | 'auto'
+    specialHistoryModeFilter: 'all', // 'all' | 'hot' | 'cold' | 'auto'
+    specialHistoryPage: 1, // 当前页码
+    specialHistoryPageSize: 50, // 每页显示数量
+    // 精选生肖历史状态
+    selectedZodiacHistory: [],
+    selectedZodiacHistoryExpanded: false
   },
 
   /**
@@ -1363,7 +1379,8 @@ const Storage = {
     DATA_VERSION: 'dataVersion',
     HISTORY_CACHE: 'historyCache',
     HISTORY_CACHE_TIME: 'historyCacheTime',
-    SPECIAL_HISTORY: 'specialHistory'
+    SPECIAL_HISTORY: 'specialHistory',
+    SELECTED_ZODIAC_HISTORY: 'selectedZodiacHistory'
   }),
 
   /**
@@ -1382,7 +1399,19 @@ const Storage = {
    * 精选特码历史最大记录数
    * @readonly
    */
-  SPECIAL_HISTORY_MAX_COUNT: 50,
+  SPECIAL_HISTORY_MAX_COUNT: 350,
+
+  /**
+   * 精选生肖历史缓存有效期（毫秒）- 30天
+   * @readonly
+   */
+  SELECTED_ZODIAC_HISTORY_DURATION: 30 * 24 * 60 * 60 * 1000,
+
+  /**
+   * 精选生肖历史最大记录数
+   * @readonly
+   */
+  SELECTED_ZODIAC_HISTORY_MAX_COUNT: 350,
 
   /**
    * 内存兜底存储（隐私模式下localStorage不可用时使用）
@@ -1582,6 +1611,48 @@ const Storage = {
    */
   clearSpecialHistory: () => {
     Storage.remove(Storage.KEYS.SPECIAL_HISTORY);
+  },
+
+  /**
+   * 保存精选生肖历史
+   * @param {Array} history - 精选生肖历史记录
+   */
+  saveSelectedZodiacHistory: (history) => {
+    Storage.set(Storage.KEYS.SELECTED_ZODIAC_HISTORY, history);
+  },
+
+  /**
+   * 加载精选生肖历史缓存
+   * @returns {Array} 过滤后的历史记录（只保留30天内的）
+   */
+  loadSelectedZodiacHistory: () => {
+    const data = Storage.get(Storage.KEYS.SELECTED_ZODIAC_HISTORY, null);
+    if(!data || !Array.isArray(data)) {
+      return [];
+    }
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - Storage.SELECTED_ZODIAC_HISTORY_DURATION;
+
+    // 过滤掉超过30天的记录
+    const filteredHistory = data.filter(item => {
+      const itemTime = item.timestamp || now;
+      return itemTime >= thirtyDaysAgo;
+    });
+
+    // 如果有过期的记录被过滤掉，更新缓存
+    if(filteredHistory.length < data.length) {
+      Storage.saveSelectedZodiacHistory(filteredHistory);
+    }
+
+    return filteredHistory;
+  },
+
+  /**
+   * 清除精选生肖历史缓存
+   */
+  clearSelectedZodiacHistory: () => {
+    Storage.remove(Storage.KEYS.SELECTED_ZODIAC_HISTORY);
   }
 };
 
@@ -1984,6 +2055,12 @@ const Filter = {
  * @namespace Business
  */
 const Business = {
+  /**
+   * calcZodiacAnalysis结果缓存
+   * @private
+   */
+  _calcZodiacAnalysisCache: new Map(),
+  
   // ====================== 农历年份相关 ======================
   /**
    * 获取当前农历年份
@@ -3280,10 +3357,46 @@ const Business = {
   },
 
   /**
-   * 计算生肖关联分析
+   * 计算生肖关联分析（带缓存）
    * @returns {Object} 分析数据
    */
   calcZodiacAnalysis: (customAnalyzeLimit) => {
+    const state = StateManager._state;
+    const { historyData } = state.analysis;
+    const analyzeLimit = customAnalyzeLimit !== undefined ? customAnalyzeLimit : state.analysis.analyzeLimit;
+    
+    // 检查缓存
+    const cacheKey = String(analyzeLimit);
+    const cached = Business._calcZodiacAnalysisCache.get(cacheKey);
+    
+    // 验证缓存有效性：检查历史数据是否变化
+    if(cached && historyData && historyData.length > 0) {
+      const latestExpect = historyData[0].expect;
+      if(cached.latestExpect === latestExpect) {
+        return cached.result; // 缓存有效，直接返回
+      }
+    }
+    
+    // 缓存无效或不存在，执行原始计算逻辑
+    const result = Business._calcZodiacAnalysisOriginal(analyzeLimit);
+    
+    // 更新缓存
+    if(result && historyData && historyData.length > 0) {
+      Business._calcZodiacAnalysisCache.set(cacheKey, {
+        latestExpect: historyData[0].expect,
+        result: result
+      });
+    }
+    
+    return result;
+  },
+  
+  /**
+   * 原始的生肖关联分析计算
+   * @private
+   * @returns {Object} 分析数据
+   */
+  _calcZodiacAnalysisOriginal: (customAnalyzeLimit) => {
     const state = StateManager._state;
     const { historyData } = state.analysis;
     const analyzeLimit = customAnalyzeLimit !== undefined ? customAnalyzeLimit : state.analysis.analyzeLimit;
@@ -6161,12 +6274,36 @@ const Business = {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
     
+    // 根据当前模式，同步更新精选特码历史的显示模式
+    let historyMode = mode;
+    if(mode === 'auto') {
+      // 自动模式：根据当前分析结果决定显示什么模式
+      const data = Business.calcZodiacAnalysis(10);
+      if(data) {
+        historyMode = Business.decideAutoMode(data);
+      } else {
+        historyMode = 'hot';
+      }
+    }
+    
+    // 更新精选特码历史的显示模式
+    StateManager.setState({ specialHistoryModeFilter: historyMode }, false);
+    
+    // 更新精选特码历史按钮样式
+    document.querySelectorAll('.special-history-mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === historyMode);
+    });
+    
     // 重新渲染精选特码
     Business.renderZodiacAnalysis();
     
+    // 重新渲染精选特码历史
+    Business.renderSpecialHistory();
+    
     // 显示提示
     const modeText = mode === 'hot' ? '🔥 热号模式' : mode === 'cold' ? '❄️ 冷号反弹' : '🤖 自动模式';
-    Toast.show(`已切换到${modeText}`);
+    const historyModeText = historyMode === 'hot' ? '🔥 热号' : historyMode === 'cold' ? '❄️ 冷号' : '全部';
+    Toast.show(`已切换到${modeText}，历史记录显示：${historyModeText}`);
   },
 
   /**
@@ -6340,17 +6477,12 @@ const Business = {
         // 模式筛选
         let modeMatch = false;
         if(modeFilter === 'all') {
-          if(isAutoMode) {
-            // 当系统处于自动模式时，默认只显示与自动模式决策结果匹配的记录
-            const autoModeDecision = autoModeDecisions.get(period);
-            modeMatch = autoModeDecision === itemMode;
-          } else {
-            // 非自动模式：显示所有模式的数据
-            modeMatch = true;
-          }
-        } else if(modeFilter === 'auto') {
-          // 自动模式筛选：显示所有模式的数据
+          // "全部"模式：始终显示所有模式（热号+冷号）的数据
           modeMatch = true;
+        } else if(modeFilter === 'auto') {
+          // 自动模式筛选：显示与自动模式决策结果匹配的记录
+          const autoModeDecision = autoModeDecisions.get(period);
+          modeMatch = autoModeDecision === itemMode;
         } else if(modeFilter === itemMode) {
           // 特定模式：只显示对应模式的数据
           modeMatch = true;
@@ -6359,15 +6491,21 @@ const Business = {
         return periodMatch && numMatch && modeMatch;
       });
       
-      const displayCount = isExpanded ? filteredHistory.length : Math.min(4, filteredHistory.length);
-      const displayHistory = filteredHistory.slice(0, displayCount);
+      // 分页逻辑（使用已声明的state变量）
+      const pageSize = state.specialHistoryPageSize || 50;
+      const currentPage = state.specialHistoryPage || 1;
+      const totalPages = Math.ceil(filteredHistory.length / pageSize);
+      const startIdx = (currentPage - 1) * pageSize;
+      const endIdx = Math.min(startIdx + pageSize, filteredHistory.length);
+      const displayHistory = filteredHistory.slice(startIdx, endIdx);
       
       let html = '';
-      displayHistory.forEach((item, idx) => {
+      displayHistory.forEach((item, displayIdx) => {
+        const globalIdx = startIdx + displayIdx; // 全局索引，用于删除等操作
         const period = item.analyzeLimit;
         const periodText = item.selectedPeriodText || (period === 'all' || period >= 365 ? '全年数据' : `${period}期数据`);
         const numCount = item.numCount || item.numbers.length;
-        const itemMode = item.mode || 'hot'; // 获取模式，默认为热号模式
+        const itemMode = item.mode || 'hot';
         
         // 生成模式标签
         const modeEmoji = itemMode === 'hot' ? '🔥' : itemMode === 'cold' ? '❄️' : '🔥';
@@ -6399,7 +6537,7 @@ const Business = {
           const isHit = item.hitNumbers && item.hitNumbers.includes(num);
           const tagClass = isHit ? 'history-tag hit' : 'history-tag';
           
-          numbersHtml += `<span class="${tagClass}" onclick="Business.showSpecialHistoryDetail(${idx}, event)" style="cursor:pointer;">${String(num).padStart(2, '0')}</span>`;
+          numbersHtml += `<span class="${tagClass}" onclick="Business.showSpecialHistoryDetail(${globalIdx}, event)" style="cursor:pointer;">${String(num).padStart(2, '0')}</span>`;
         });
         
         // 生成开奖号码显示 - 仅在开奖后显示
@@ -6412,7 +6550,7 @@ const Business = {
         }
         
         html += `
-          <div class="special-history-item" data-index="${idx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;" ontouchstart="Business.handleSpecialHistoryTouchStart(event, ${idx})" ontouchmove="Business.handleSpecialHistoryTouchMove(event, ${idx})" ontouchend="Business.handleSpecialHistoryTouchEnd(event, ${idx})">
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;" ontouchstart="Business.handleSpecialHistoryTouchStart(event, ${globalIdx})" ontouchmove="Business.handleSpecialHistoryTouchMove(event, ${globalIdx})" ontouchend="Business.handleSpecialHistoryTouchEnd(event, ${globalIdx})">
             <div class="special-history-content" style="transition:transform 0.3s ease;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="color:var(--sub-text);font-size:11px;">
@@ -6425,40 +6563,62 @@ const Business = {
                 </div>
               </div>
             </div>
-            <div class="special-history-delete" style="position:absolute;right:0;top:0;bottom:0;width:100px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;transform:translateX(100%);transition:transform 0.3s ease;cursor:pointer;" onclick="Business.deleteSpecialHistoryItem(${idx})">
+            <div class="special-history-delete" style="position:absolute;right:0;top:0;bottom:0;width:100px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;transform:translateX(100%);transition:transform 0.3s ease;cursor:pointer;" onclick="Business.deleteSpecialHistoryItem(${globalIdx})">
               删除
             </div>
           </div>
         `;
       });
       
-      historyListEl.innerHTML = html;
-      
-      if(toggleEl) {
-        if(filteredHistory.length > 4) {
-          toggleEl.style.display = 'block';
-          const toggleBtn = toggleEl.querySelector('button');
-          if(toggleBtn) {
-            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${filteredHistory.length - 4}条）`;
-          }
-        } else {
-          toggleEl.style.display = 'none';
+      // 生成分页控件
+      let paginationHtml = '';
+      if(totalPages > 1) {
+        paginationHtml = '<div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;">';
+        if(currentPage > 1) {
+          paginationHtml += `<button class="btn-mini" onclick="Business.goToSpecialHistoryPage(${currentPage - 1})">上一页</button>`;
         }
+        paginationHtml += `<span style="color:var(--sub-text);font-size:13px;">第 ${currentPage} / ${totalPages} 页 (共 ${filteredHistory.length} 条)</span>`;
+        if(currentPage < totalPages) {
+          paginationHtml += `<button class="btn-mini" onclick="Business.goToSpecialHistoryPage(${currentPage + 1})">下一页</button>`;
+        }
+        paginationHtml += '</div>';
       }
+      
+      historyListEl.innerHTML = html + paginationHtml;
     } catch(e) {
       console.error('渲染精选特码历史失败', e);
     }
   },
 
   /**
-   * 切换精选特码历史的展开/折叠状态
+   * 切换精选特码历史页码
+   * @param {number} page - 目标页码
+   */
+  goToSpecialHistoryPage: (page) => {
+    try {
+      const state = StateManager._state;
+      const history = state.specialHistory;
+      const filteredHistory = history.filter(() => true); // 简化，实际需要重新计算筛选
+      const pageSize = state.specialHistoryPageSize || 50;
+      const totalPages = Math.ceil(filteredHistory.length / pageSize);
+      
+      if(page < 1) page = 1;
+      if(page > totalPages) page = totalPages;
+      
+      StateManager.setState({ specialHistoryPage: page }, false);
+      Business.renderSpecialHistory();
+    } catch(e) {
+      console.error('切换精选特码历史页码失败', e);
+    }
+  },
+  
+  /**
+   * 切换精选特码历史的展开/折叠状态（保留用于兼容，但分页已废弃）
+   * @deprecated 使用分页代替
    */
   toggleSpecialHistory: () => {
     try {
-      const state = StateManager._state;
-      const newExpanded = !state.specialHistoryExpanded;
-      StateManager.setState({ specialHistoryExpanded: newExpanded }, false);
-      Business.renderSpecialHistory();
+      // 现在使用分页，这个函数保留但不再使用
     } catch(e) {
       console.error('切换精选特码历史展开状态失败', e);
     }
@@ -6780,28 +6940,6 @@ const Business = {
   },
 
   /**
-   * 全选精选特码历史的筛选条件
-   */
-  selectAllSpecialFilters: () => {
-    Business.setButtonGroupState('.special-period-btn', ['10', '20', '30', 'all'], 'data-period');
-    Business.setButtonGroupState('.special-num-btn', ['5', '10', '15', '20'], 'data-num');
-    Business.saveSpecialHistoryFilter();
-    Business.renderSpecialHistory();
-    Business.togglePanel('specialFiltersPanel');
-  },
-
-  /**
-   * 重置精选特码历史的筛选条件（保留10期5个号勾选）
-   */
-  resetSpecialFilters: () => {
-    Business.setButtonGroupState('.special-period-btn', ['10'], 'data-period');
-    Business.setButtonGroupState('.special-num-btn', ['5'], 'data-num');
-    Business.saveSpecialHistoryFilter();
-    Business.renderSpecialHistory();
-    Business.togglePanel('specialFiltersPanel');
-  },
-
-  /**
    * 切换精选特码历史筛选面板的展开/折叠
    */
   toggleSpecialFiltersPanel: () => {
@@ -6948,6 +7086,261 @@ const Business = {
    */
   checkUpdate: () => {
     Toast.show('当前已是最新版本');
+  },
+
+  // ====================== 精选生肖历史相关 ======================
+  /**
+   * 后台静默保存精选生肖
+   */
+  silentSaveAllSelectedZodiacs: () => {
+    try {
+      const state = StateManager._state;
+      const historyData = state.analysis.historyData;
+      
+      if(!historyData || historyData.length < 2) {
+        return;
+      }
+      
+      // 获取当前最新的开奖期号
+      let latestExpect = null;
+      let predictExpect = null;
+      if(historyData.length > 0) {
+        latestExpect = historyData[0].expect;
+        predictExpect = String(Number(latestExpect) + 1);
+      }
+      
+      // 获取现有历史记录
+      let currentHistory = [...state.selectedZodiacHistory];
+      
+      // 检查是否已存在相同记录（同一预测期）
+      const exists = currentHistory.some(item => item.expect === predictExpect);
+      
+      if(exists) {
+        return; // 已存在则跳过
+      }
+      
+      // 从不同期数的生肖预测中提取前三名生肖（即精选生肖）
+      const periods = [10, 20, 30];
+      const selectedZodiacsMap = new Map();
+      
+      periods.forEach(period => {
+        const periodData = Business.calcZodiacAnalysis(period);
+        if(periodData && periodData.sortedZodiacs && periodData.sortedZodiacs.length > 0) {
+          // 提取前三名生肖
+          const top3Zodiacs = periodData.sortedZodiacs.slice(0, 3).map(([zod]) => zod);
+          top3Zodiacs.forEach(zod => {
+            if(!selectedZodiacsMap.has(zod)) {
+              selectedZodiacsMap.set(zod, []);
+            }
+            selectedZodiacsMap.get(zod).push(period);
+          });
+        }
+      });
+      
+      // 转换为数组
+      const selectedZodiacs = Array.from(selectedZodiacsMap.entries()).map(([zod, periods]) => ({
+        zodiac: zod,
+        periods: periods
+      }));
+      
+      if(selectedZodiacs.length === 0) {
+        return;
+      }
+      
+      // 创建历史记录项
+      const now = new Date();
+      const timeStr = now.toLocaleString('zh-CN', { 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      
+      const historyItem = {
+        id: Date.now() + Math.random(),
+        timestamp: Date.now(),
+        time: timeStr,
+        selectedZodiacs: selectedZodiacs,
+        latestExpect: latestExpect,
+        expect: predictExpect,
+        predictExpect: predictExpect,
+        actualZodiac: null,
+        isHit: false
+      };
+      
+      // 添加到历史记录
+      currentHistory.unshift(historyItem);
+      
+      // 限制最大记录数
+      if(currentHistory.length > Storage.SELECTED_ZODIAC_HISTORY_MAX_COUNT) {
+        currentHistory.length = Storage.SELECTED_ZODIAC_HISTORY_MAX_COUNT;
+      }
+      
+      // 保存更新
+      StateManager.setState({ selectedZodiacHistory: currentHistory }, false);
+      Storage.saveSelectedZodiacHistory(currentHistory);
+      // 重新渲染精选生肖历史
+      Business.renderSelectedZodiacHistory();
+    } catch(e) {
+      console.error('静默保存精选生肖失败', e);
+    }
+  },
+
+  /**
+   * 更新精选生肖历史与开奖记录的比较
+   */
+  updateSelectedZodiacHistoryComparison: () => {
+    const state = StateManager._state;
+    const historyData = state.analysis.historyData;
+    const selectedZodiacHistory = state.selectedZodiacHistory;
+    
+    if(historyData.length === 0 || selectedZodiacHistory.length === 0) {
+      return;
+    }
+    
+    // 创建期数到生肖的映射
+    const expectToZodiac = {};
+    historyData.forEach(dataItem => {
+      if(dataItem.expect && dataItem.zodiac) {
+        const zodArrRaw = dataItem.zodiac.split(',');
+        const zodArr = zodArrRaw.map(z => CONFIG.ANALYSIS.ZODIAC_TRAD_TO_SIMP[z] || z);
+        expectToZodiac[dataItem.expect] = zodArr[6] || '';
+      }
+    });
+    
+    let hasUpdates = false;
+    const updatedHistory = selectedZodiacHistory.map(item => {
+      // 如果已经有开奖结果，跳过
+      if(item.actualZodiac !== null) {
+        return item;
+      }
+      
+      // 查找对应的开奖期数
+      const itemExpect = item.expect;
+      if(!itemExpect) {
+        return item;
+      }
+      
+      const actualZodiac = expectToZodiac[itemExpect];
+      if(!actualZodiac) {
+        return item;
+      }
+      
+      // 检查是否命中
+      const isHit = item.selectedZodiacs.some(z => z.zodiac === actualZodiac);
+      
+      hasUpdates = true;
+      return {
+        ...item,
+        actualZodiac: actualZodiac,
+        isHit: isHit
+      };
+    });
+    
+    if(hasUpdates) {
+      StateManager.setState({ selectedZodiacHistory: updatedHistory }, false);
+      Storage.saveSelectedZodiacHistory(updatedHistory);
+    }
+  },
+
+  /**
+   * 渲染精选生肖历史
+   */
+  renderSelectedZodiacHistory: () => {
+    try {
+      const state = StateManager._state;
+      const historyListEl = document.getElementById('selectedZodiacHistoryList');
+      const toggleEl = document.getElementById('selectedZodiacHistoryToggle');
+      
+      if(!historyListEl) return;
+      
+      const history = state.selectedZodiacHistory;
+      const isExpanded = state.selectedZodiacHistoryExpanded || false;
+      
+      if(!history || history.length === 0) {
+        historyListEl.innerHTML = '<div style="text-align:center;color:var(--sub-text);padding:20px;font-size:13px;">暂无精选生肖历史</div>';
+        if(toggleEl) toggleEl.style.display = 'none';
+        return;
+      }
+      
+      const displayCount = isExpanded ? history.length : Math.min(4, history.length);
+      const displayHistory = history.slice(0, displayCount);
+      
+      let html = '';
+      displayHistory.forEach((item, idx) => {
+        let titleText = '';
+        if(item.expect) {
+          titleText = `第${item.expect}期`;
+        }
+        
+        // 生成精选生肖标签
+        const zodiacTags = item.selectedZodiacs.map(z => {
+          // 比对成功的生肖标签底色变蓝色
+          const isMatchZodiac = item.actualZodiac && z.zodiac === item.actualZodiac;
+          const tagClass = isMatchZodiac ? 'history-tag hit' : 'history-tag';
+          return `<span class="${tagClass}">${z.zodiac}</span>`;
+        }).join('');
+        
+        // 实际开奖生肖的标签类：命中变蓝，未命中变红
+        const actualZodiacClass = item.isHit ? 'history-tag hit' : 'history-tag miss';
+        
+        html += `
+          <div style="padding:10px;border-bottom:1px solid var(--border);font-size:13px;background:var(--card);border-radius:8px;margin-bottom:8px;">
+            <div style="color:var(--sub-text);margin-bottom:8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;">
+              <span>${titleText}</span>
+              <span>${item.time}</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${zodiacTags}</div>
+              ${item.actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${item.actualZodiac}</span>` : ''}
+            </div>
+          </div>
+        `;
+      });
+      
+      historyListEl.innerHTML = html;
+      
+      // 控制展开/折叠按钮的显示
+      if(toggleEl) {
+        if(history.length > 4) {
+          toggleEl.style.display = 'block';
+          const toggleBtn = toggleEl.querySelector('button');
+          if(toggleBtn) {
+            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${history.length - 4}条）`;
+          }
+        } else {
+          toggleEl.style.display = 'none';
+        }
+      }
+    } catch(e) {
+      console.error('渲染精选生肖历史失败', e);
+    }
+  },
+
+  /**
+   * 切换精选生肖历史的展开/折叠状态
+   */
+  toggleSelectedZodiacHistory: () => {
+    try {
+      const state = StateManager._state;
+      const newExpanded = !state.selectedZodiacHistoryExpanded;
+      StateManager.setState({ selectedZodiacHistoryExpanded: newExpanded }, false);
+      Business.renderSelectedZodiacHistory();
+    } catch(e) {
+      console.error('切换精选生肖历史展开状态失败', e);
+    }
+  },
+
+  /**
+   * 清空精选生肖历史
+   */
+  clearSelectedZodiacHistory: () => {
+    if(confirm('确定要清空所有精选生肖历史吗？')) {
+      Storage.clearSelectedZodiacHistory();
+      StateManager.setState({ selectedZodiacHistory: [] }, false);
+      Business.renderSelectedZodiacHistory();
+      Toast.show('精选生肖历史已清空');
+    }
   }
 };
 
@@ -7154,8 +7547,6 @@ const EventBinder = {
       // 精选特码历史操作
       if(action === 'clearSpecialHistory') Business.clearSpecialHistory();
       if(action === 'toggleSpecialHistory') Business.toggleSpecialHistory();
-      if(action === 'selectAllSpecialFilters') Business.selectAllSpecialFilters();
-      if(action === 'resetSpecialFilters') Business.resetSpecialFilters();
       if(action === 'toggleSpecialFiltersPanel') Business.toggleSpecialFiltersPanel();
       if(action === 'confirmSpecialFilters') Business.confirmSpecialFilters();
       // 切换精选特码历史模式筛选
@@ -7166,6 +7557,9 @@ const EventBinder = {
       if(action === 'showStatDetail') Business.showStatDetail(actionBtn.dataset.statType);
       // 切换精选特码模式
       if(action === 'switchSpecialMode') Business.switchSpecialMode(actionBtn.dataset.mode);
+      // 精选生肖历史操作
+      if(action === 'clearSelectedZodiacHistory') Business.clearSelectedZodiacHistory();
+      if(action === 'toggleSelectedZodiacHistory') Business.toggleSelectedZodiacHistory();
       return;
     }
 
@@ -7469,9 +7863,45 @@ async function initApp() {
     // 11. 加载精选特码历史并渲染
     const specialHistory = Storage.loadSpecialHistory();
     StateManager.setState({ specialHistory: specialHistory }, false);
-    // 加载精选特码历史筛选状态
+    // 先加载用户之前保存的筛选状态
     Business.loadSpecialHistoryFilter();
+    
+    // 根据自动模式的初始状态，设置精选特码历史的默认显示模式
+    const state = StateManager._state;
+    const currentSystemMode = state.analysis.specialMode || 'auto';
+    let defaultHistoryMode = state.specialHistoryModeFilter || 'all';
+    
+    // 如果当前是"全部"模式，根据系统模式自动调整
+    if(defaultHistoryMode === 'all') {
+      if(currentSystemMode === 'hot') {
+        defaultHistoryMode = 'hot';
+      } else if(currentSystemMode === 'cold') {
+        defaultHistoryMode = 'cold';
+      } else if(currentSystemMode === 'auto') {
+        // 自动模式：根据当前分析结果决定显示什么模式
+        const data = Business.calcZodiacAnalysis(10);
+        if(data) {
+          defaultHistoryMode = Business.decideAutoMode(data);
+        } else {
+          defaultHistoryMode = 'hot';
+        }
+      }
+    }
+    
+    // 更新精选特码历史的显示模式
+    StateManager.setState({ specialHistoryModeFilter: defaultHistoryMode }, false);
+    
+    // 更新精选特码历史按钮样式
+    document.querySelectorAll('.special-history-mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === defaultHistoryMode);
+    });
+    
     Business.renderSpecialHistory();
+    
+    // 11.5. 加载精选生肖历史并渲染
+    const selectedZodiacHistory = Storage.loadSelectedZodiacHistory();
+    StateManager.setState({ selectedZodiacHistory: selectedZodiacHistory }, false);
+    Business.renderSelectedZodiacHistory();
 
     // 12. 初始化事件绑定
     EventBinder.init();
@@ -7486,19 +7916,30 @@ async function initApp() {
     // 15. 隐藏加载遮罩
     Render.hideLoading();
     
-    // 延迟静默更新预测历史并保存精选特码
+    // 延迟静默更新预测历史并保存精选特码和精选生肖
     setTimeout(() => {
       Business.silentUpdateAllPredictionHistory();
       // 同时更新精选特码历史的开奖记录比较
       Business.updateSpecialHistoryComparison();
       // 重新渲染精选特码历史以显示最新比较结果
       Business.renderSpecialHistory();
+      // 更新精选生肖历史的开奖记录比较
+      Business.updateSelectedZodiacHistoryComparison();
+      // 重新渲染精选生肖历史以显示最新比较结果
+      Business.renderSelectedZodiacHistory();
       
       // 后台静默生成并保存所有精选特码组合
       try {
         Business.silentSaveAllSpecialCombinations();
       } catch(e) {
         console.error('后台静默保存精选特码失败', e);
+      }
+      
+      // 后台静默生成并保存所有精选生肖组合
+      try {
+        Business.silentSaveAllSelectedZodiacs();
+      } catch(e) {
+        console.error('后台静默保存精选生肖失败', e);
       }
     }, 3000);
     
