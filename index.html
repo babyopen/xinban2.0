@@ -324,9 +324,6 @@
         <div id="selectedZodiacHistoryList">
           <div class="empty-tip">暂无精选生肖历史</div>
         </div>
-        <div id="selectedZodiacHistoryToggle" style="display:none;margin-top:8px;">
-          <button class="toggle-btn" data-action="toggleSelectedZodiacHistory" style="width:100%;">展开更多</button>
-        </div>
       </div>
     </div>
     <div class="card">
@@ -1031,6 +1028,84 @@ const Utils = {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  },
+
+  /**
+   * 通用触摸滑动删除处理器
+   */
+  SwipeDeleteHandler: {
+    _startX: {},
+    _currentX: {},
+    _threshold: -150,
+
+    handleTouchStart: (e, idx, prefix) => {
+      Utils.SwipeDeleteHandler._startX[`${prefix}_${idx}`] = e.touches[0].clientX;
+      Utils.SwipeDeleteHandler._currentX[`${prefix}_${idx}`] = e.touches[0].clientX;
+    },
+
+    handleTouchMove: (e, idx, prefix) => {
+      const key = `${prefix}_${idx}`;
+      if(Utils.SwipeDeleteHandler._startX[key] === undefined) return;
+      
+      const currentX = e.touches[0].clientX;
+      Utils.SwipeDeleteHandler._currentX[key] = currentX;
+      
+      const deltaX = currentX - Utils.SwipeDeleteHandler._startX[key];
+      const item = e.currentTarget;
+      const content = item.querySelector('.special-history-content');
+      const deleteBtn = item.querySelector('.special-history-delete');
+      
+      if(deltaX < 0 && deltaX > Utils.SwipeDeleteHandler._threshold) {
+        content.style.transform = `translateX(${deltaX}px)`;
+        deleteBtn.style.transform = `translateX(${100 + deltaX / Utils.SwipeDeleteHandler._threshold * 100}%)`;
+      } else if(deltaX <= Utils.SwipeDeleteHandler._threshold) {
+        content.style.transform = `translateX(${Utils.SwipeDeleteHandler._threshold}px)`;
+        deleteBtn.style.transform = 'translateX(0)';
+      }
+    },
+
+    handleTouchEnd: (e, idx, prefix) => {
+      const key = `${prefix}_${idx}`;
+      const item = e.currentTarget;
+      const content = item.querySelector('.special-history-content');
+      const deleteBtn = item.querySelector('.special-history-delete');
+      
+      const deltaX = Utils.SwipeDeleteHandler._currentX[key] - Utils.SwipeDeleteHandler._startX[key];
+      
+      if(deltaX <= Utils.SwipeDeleteHandler._threshold / 2) {
+        content.style.transform = `translateX(${Utils.SwipeDeleteHandler._threshold}px)`;
+        deleteBtn.style.transform = 'translateX(0)';
+      } else {
+        content.style.transform = 'translateX(0)';
+        deleteBtn.style.transform = 'translateX(100%)';
+      }
+      
+      delete Utils.SwipeDeleteHandler._startX[key];
+      delete Utils.SwipeDeleteHandler._currentX[key];
+    }
+  },
+
+  /**
+   * 生成分页HTML
+   * @param {number} currentPage - 当前页码
+   * @param {number} totalPages - 总页数
+   * @param {number} totalItems - 总记录数
+   * @param {string} pageFunc - 翻页函数名
+   * @returns {string} 分页HTML
+   */
+  renderPagination: (currentPage, totalPages, totalItems, pageFunc) => {
+    if(totalPages <= 1) return '';
+    
+    let html = '<div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;">';
+    if(currentPage > 1) {
+      html += `<button class="btn-mini" onclick="Business.${pageFunc}(${currentPage - 1})">上一页</button>`;
+    }
+    html += `<span style="color:var(--sub-text);font-size:13px;">第 ${currentPage} / ${totalPages} 页 (共 ${totalItems} 条)</span>`;
+    if(currentPage < totalPages) {
+      html += `<button class="btn-mini" onclick="Business.${pageFunc}(${currentPage + 1})">下一页</button>`;
+    }
+    html += '</div>';
+    return html;
   }
 };
 
@@ -1264,7 +1339,9 @@ const StateManager = {
     specialHistoryPageSize: 50, // 每页显示数量
     // 精选生肖历史状态
     selectedZodiacHistory: [],
-    selectedZodiacHistoryExpanded: false
+    selectedZodiacHistoryExpanded: false,
+    selectedZodiacHistoryPage: 1,
+    selectedZodiacHistoryPageSize: 50
   },
 
   /**
@@ -3655,23 +3732,7 @@ const Business = {
     // 精选生肖
     const selectedZodiacsGrid = document.getElementById('selectedZodiacsGrid');
     if(selectedZodiacsGrid) {
-      // 从不同期数的生肖预测中提取前三名生肖
-      const periods = [10, 20, 30];
-      const selectedZodiacsMap = new Map();
-      
-      periods.forEach(period => {
-        const periodData = Business.calcZodiacAnalysis(period);
-        if(periodData && periodData.sortedZodiacs && periodData.sortedZodiacs.length > 0) {
-          // 提取前三名生肖
-          const top3Zodiacs = periodData.sortedZodiacs.slice(0, 3).map(([zod]) => zod);
-          top3Zodiacs.forEach(zod => {
-            if(!selectedZodiacsMap.has(zod)) {
-              selectedZodiacsMap.set(zod, []);
-            }
-            selectedZodiacsMap.get(zod).push(period);
-          });
-        }
-      });
+      const selectedZodiacsMap = Business.getSelectedZodiacs();
       
       // 渲染精选生肖
       if(selectedZodiacsMap.size > 0) {
@@ -6585,7 +6646,7 @@ const Business = {
         }
         
         html += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;" ontouchstart="Business.handleSpecialHistoryTouchStart(event, ${globalIdx})" ontouchmove="Business.handleSpecialHistoryTouchMove(event, ${globalIdx})" ontouchend="Business.handleSpecialHistoryTouchEnd(event, ${globalIdx})">
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;" ontouchstart="Utils.SwipeDeleteHandler.handleTouchStart(event, ${globalIdx}, 'specialHistory')" ontouchmove="Utils.SwipeDeleteHandler.handleTouchMove(event, ${globalIdx}, 'specialHistory')" ontouchend="Utils.SwipeDeleteHandler.handleTouchEnd(event, ${globalIdx}, 'specialHistory')">
             <div class="special-history-content" style="transition:transform 0.3s ease;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="color:var(--sub-text);font-size:11px;">
@@ -6605,20 +6666,7 @@ const Business = {
         `;
       });
       
-      // 生成分页控件
-      let paginationHtml = '';
-      if(totalPages > 1) {
-        paginationHtml = '<div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;">';
-        if(currentPage > 1) {
-          paginationHtml += `<button class="btn-mini" onclick="Business.goToSpecialHistoryPage(${currentPage - 1})">上一页</button>`;
-        }
-        paginationHtml += `<span style="color:var(--sub-text);font-size:13px;">第 ${currentPage} / ${totalPages} 页 (共 ${filteredHistory.length} 条)</span>`;
-        if(currentPage < totalPages) {
-          paginationHtml += `<button class="btn-mini" onclick="Business.goToSpecialHistoryPage(${currentPage + 1})">下一页</button>`;
-        }
-        paginationHtml += '</div>';
-      }
-      
+      const paginationHtml = Utils.renderPagination(currentPage, totalPages, filteredHistory.length, 'goToSpecialHistoryPage');
       historyListEl.innerHTML = html + paginationHtml;
     } catch(e) {
       console.error('渲染精选特码历史失败', e);
@@ -6670,68 +6718,7 @@ const Business = {
     Toast.show('已清空');
   },
 
-  // 精选特码历史左滑删除相关变量
-  _specialHistoryTouchStartX: {},
-  _specialHistoryTouchCurrentX: {},
-  _specialHistoryDeleteThreshold: -150, // 滑动超过150px显示删除按钮
 
-  /**
-   * 精选特码历史触摸开始
-   */
-  handleSpecialHistoryTouchStart: (e, idx) => {
-    Business._specialHistoryTouchStartX[idx] = e.touches[0].clientX;
-    Business._specialHistoryTouchCurrentX[idx] = e.touches[0].clientX;
-  },
-
-  /**
-   * 精选特码历史触摸移动
-   */
-  handleSpecialHistoryTouchMove: (e, idx) => {
-    if(Business._specialHistoryTouchStartX[idx] === undefined) return;
-    
-    const currentX = e.touches[0].clientX;
-    Business._specialHistoryTouchCurrentX[idx] = currentX;
-    
-    const deltaX = currentX - Business._specialHistoryTouchStartX[idx];
-    const item = e.currentTarget;
-    const content = item.querySelector('.special-history-content');
-    const deleteBtn = item.querySelector('.special-history-delete');
-    
-    // 只允许向左滑动
-    if(deltaX < 0 && deltaX > Business._specialHistoryDeleteThreshold) {
-      content.style.transform = `translateX(${deltaX}px)`;
-      deleteBtn.style.transform = `translateX(${100 + deltaX / Business._specialHistoryDeleteThreshold * 100}%)`;
-    } else if(deltaX <= Business._specialHistoryDeleteThreshold) {
-      content.style.transform = `translateX(${Business._specialHistoryDeleteThreshold}px)`;
-      deleteBtn.style.transform = 'translateX(0)';
-    }
-  },
-
-  /**
-   * 精选特码历史触摸结束
-   */
-  handleSpecialHistoryTouchEnd: (e, idx) => {
-    const item = e.currentTarget;
-    const content = item.querySelector('.special-history-content');
-    const deleteBtn = item.querySelector('.special-history-delete');
-    
-    const deltaX = Business._specialHistoryTouchCurrentX[idx] - Business._specialHistoryTouchStartX[idx];
-    
-    // 判断是否显示删除按钮
-    if(deltaX <= Business._specialHistoryDeleteThreshold / 2) {
-      // 显示删除按钮
-      content.style.transform = `translateX(${Business._specialHistoryDeleteThreshold}px)`;
-      deleteBtn.style.transform = 'translateX(0)';
-    } else {
-      // 恢复原位
-      content.style.transform = 'translateX(0)';
-      deleteBtn.style.transform = 'translateX(100%)';
-    }
-    
-    // 清理
-    delete Business._specialHistoryTouchStartX[idx];
-    delete Business._specialHistoryTouchCurrentX[idx];
-  },
 
   /**
    * 删除精选特码历史单条记录
@@ -7082,23 +7069,7 @@ const Business = {
         return; // 已存在则跳过
       }
       
-      // 从不同期数的生肖预测中提取前三名生肖（即精选生肖）
-      const periods = [10, 20, 30];
-      const selectedZodiacsMap = new Map();
-      
-      periods.forEach(period => {
-        const periodData = Business.calcZodiacAnalysis(period);
-        if(periodData && periodData.sortedZodiacs && periodData.sortedZodiacs.length > 0) {
-          // 提取前三名生肖
-          const top3Zodiacs = periodData.sortedZodiacs.slice(0, 3).map(([zod]) => zod);
-          top3Zodiacs.forEach(zod => {
-            if(!selectedZodiacsMap.has(zod)) {
-              selectedZodiacsMap.set(zod, []);
-            }
-            selectedZodiacsMap.get(zod).push(period);
-          });
-        }
-      });
+      const selectedZodiacsMap = Business.getSelectedZodiacs();
       
       // 转换为数组
       const selectedZodiacs = Array.from(selectedZodiacsMap.entries()).map(([zod, periods]) => ({
@@ -7206,6 +7177,31 @@ const Business = {
     }
   },
 
+
+
+  /**
+   * 获取精选生肖（统一筛选逻辑）
+   */
+  getSelectedZodiacs: () => {
+    const periods = [10, 20, 30];
+    const selectedZodiacsMap = new Map();
+    
+    periods.forEach(period => {
+      const periodData = Business.calcZodiacAnalysis(period);
+      if(periodData && periodData.sortedZodiacs && periodData.sortedZodiacs.length > 0) {
+        const top3Zodiacs = periodData.sortedZodiacs.slice(0, 3).map(([zod]) => zod);
+        top3Zodiacs.forEach(zod => {
+          if(!selectedZodiacsMap.has(zod)) {
+            selectedZodiacsMap.set(zod, []);
+          }
+          selectedZodiacsMap.get(zod).push(period);
+        });
+      }
+    });
+    
+    return selectedZodiacsMap;
+  },
+
   /**
    * 渲染精选生肖历史
    */
@@ -7213,84 +7209,206 @@ const Business = {
     try {
       const state = StateManager._state;
       const historyListEl = document.getElementById('selectedZodiacHistoryList');
-      const toggleEl = document.getElementById('selectedZodiacHistoryToggle');
       
       if(!historyListEl) return;
       
       const history = state.selectedZodiacHistory;
-      const isExpanded = state.selectedZodiacHistoryExpanded || false;
       
       if(!history || history.length === 0) {
         historyListEl.innerHTML = '<div style="text-align:center;color:var(--sub-text);padding:20px;font-size:13px;">暂无精选生肖历史</div>';
-        if(toggleEl) toggleEl.style.display = 'none';
         return;
       }
       
-      const displayCount = isExpanded ? history.length : Math.min(4, history.length);
-      const displayHistory = history.slice(0, displayCount);
+      const pageSize = state.selectedZodiacHistoryPageSize || 50;
+      const currentPage = state.selectedZodiacHistoryPage || 1;
+      const totalPages = Math.ceil(history.length / pageSize);
+      const startIdx = (currentPage - 1) * pageSize;
+      const endIdx = Math.min(startIdx + pageSize, history.length);
+      const displayHistory = history.slice(startIdx, endIdx);
       
       let html = '';
-      displayHistory.forEach((item, idx) => {
+      displayHistory.forEach((item, displayIdx) => {
+        const globalIdx = startIdx + displayIdx;
         let titleText = '';
         if(item.expect) {
           titleText = `第${item.expect}期`;
         }
         
-        // 生成精选生肖标签
         const zodiacTags = item.selectedZodiacs.map(z => {
-          // 比对成功的生肖标签底色变蓝色
           const isMatchZodiac = item.actualZodiac && z.zodiac === item.actualZodiac;
           const tagClass = isMatchZodiac ? 'history-tag hit' : 'history-tag';
           return `<span class="${tagClass}">${z.zodiac}</span>`;
         }).join('');
         
-        // 实际开奖生肖的标签类：命中变蓝，未命中变红
         const actualZodiacClass = item.isHit ? 'history-tag hit' : 'history-tag miss';
         
         html += `
-          <div style="padding:10px;border-bottom:1px solid var(--border);font-size:13px;background:var(--card);border-radius:8px;margin-bottom:8px;">
-            <div style="color:var(--sub-text);margin-bottom:8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;">
-              <span>${titleText}</span>
-              <span>${item.time}</span>
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;cursor:pointer;" ontouchstart="Utils.SwipeDeleteHandler.handleTouchStart(event, ${globalIdx}, 'selectedZodiac')" ontouchmove="Utils.SwipeDeleteHandler.handleTouchMove(event, ${globalIdx}, 'selectedZodiac')" ontouchend="Utils.SwipeDeleteHandler.handleTouchEnd(event, ${globalIdx}, 'selectedZodiac')" onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)">
+            <div class="special-history-content" style="transition:transform 0.3s ease;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="color:var(--sub-text);font-size:11px;">
+                  <span>${titleText || '-'} · ${item.time}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${zodiacTags}</div>
+                ${item.actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${item.actualZodiac}</span>` : ''}
+              </div>
             </div>
-            <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
-              <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${zodiacTags}</div>
-              ${item.actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${item.actualZodiac}</span>` : ''}
+            <div class="special-history-delete" style="position:absolute;right:0;top:0;bottom:0;width:100px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;transform:translateX(100%);transition:transform 0.3s ease;cursor:pointer;" onclick="Business.deleteSelectedZodiacHistoryItem(${globalIdx})">
+              删除
             </div>
           </div>
         `;
       });
       
-      historyListEl.innerHTML = html;
-      
-      // 控制展开/折叠按钮的显示
-      if(toggleEl) {
-        if(history.length > 4) {
-          toggleEl.style.display = 'block';
-          const toggleBtn = toggleEl.querySelector('button');
-          if(toggleBtn) {
-            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${history.length - 4}条）`;
-          }
-        } else {
-          toggleEl.style.display = 'none';
-        }
-      }
+      const paginationHtml = Utils.renderPagination(currentPage, totalPages, history.length, 'goToSelectedZodiacHistoryPage');
+      historyListEl.innerHTML = html + paginationHtml;
     } catch(e) {
       console.error('渲染精选生肖历史失败', e);
     }
   },
 
   /**
-   * 切换精选生肖历史的展开/折叠状态
+   * 切换精选生肖历史页码
    */
-  toggleSelectedZodiacHistory: () => {
+  goToSelectedZodiacHistoryPage: (page) => {
     try {
       const state = StateManager._state;
-      const newExpanded = !state.selectedZodiacHistoryExpanded;
-      StateManager.setState({ selectedZodiacHistoryExpanded: newExpanded }, false);
+      const history = state.selectedZodiacHistory;
+      const pageSize = state.selectedZodiacHistoryPageSize || 50;
+      const totalPages = Math.ceil(history.length / pageSize);
+      
+      if(page < 1) page = 1;
+      if(page > totalPages) page = totalPages;
+      
+      StateManager.setState({ selectedZodiacHistoryPage: page }, false);
       Business.renderSelectedZodiacHistory();
     } catch(e) {
-      console.error('切换精选生肖历史展开状态失败', e);
+      console.error('切换精选生肖历史页码失败', e);
+    }
+  },
+
+
+
+  /**
+   * 删除精选生肖历史单条记录
+   */
+  deleteSelectedZodiacHistoryItem: (idx) => {
+    try {
+      if(!confirm('确定删除该记录？')) return;
+      const state = StateManager._state;
+      const history = state.selectedZodiacHistory || [];
+      
+      if(idx < 0 || idx >= history.length) {
+        Toast.show('删除失败：记录不存在');
+        return;
+      }
+      
+      history.splice(idx, 1);
+      
+      Storage.saveSelectedZodiacHistory(history);
+      StateManager.setState({ selectedZodiacHistory: history }, false);
+      Business.renderSelectedZodiacHistory();
+      Toast.show('已删除');
+    } catch(e) {
+      console.error('删除精选生肖历史记录失败', e);
+      Toast.show('删除失败');
+    }
+  },
+
+  /**
+   * 显示精选生肖历史详情弹窗
+   */
+  showSelectedZodiacDetail: (idx, e) => {
+    try {
+      e.stopPropagation();
+      
+      const state = StateManager._state;
+      const history = state.selectedZodiacHistory || [];
+      
+      if(idx < 0 || idx >= history.length) {
+        Toast.show('记录不存在');
+        return;
+      }
+      
+      const item = history[idx];
+      
+      let zodiacsDetailHtml = '';
+      item.selectedZodiacs.forEach(z => {
+        const periodTags = z.periods.map(period => {
+          const periodMap = { 10: '1', 20: '2', 30: '3' };
+          return `<span class="selected-zodiac-period-tag">${periodMap[period] || period}</span>`;
+        }).join('');
+        
+        const isMatch = item.actualZodiac && z.zodiac === item.actualZodiac;
+        const hitClass = isMatch ? 'background:var(--bg-secondary);border:2px solid var(--success);' : '';
+        
+        zodiacsDetailHtml += `
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px;background:var(--bg-secondary);border-radius:12px;${hitClass}">
+            <div style="font-size:18px;font-weight:600;">${z.zodiac}</div>
+            <div style="display:flex;gap:4px;">${periodTags}</div>
+          </div>
+        `;
+      });
+      
+      let drawResultHtml = '';
+      if(item.actualZodiac) {
+        drawResultHtml = `
+          <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+            <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">开奖生肖</div>
+            <div style="display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg-secondary);border-radius:12px;">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+                <div style="font-size:24px;font-weight:600;">${item.actualZodiac}</div>
+              </div>
+              <div style="flex:1;">
+                <div style="font-size:14px;color:${item.isHit ? 'var(--success)' : 'var(--danger)'};">
+                  ${item.isHit ? '🎉 命中' : '未命中'}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      let titleText = '';
+      if(item.expect) {
+        titleText = `第${item.expect}期`;
+      }
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">精选生肖详情</h3>
+            <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          
+          <div class="modal-info">
+            <div class="modal-info-row">
+              <span class="modal-info-label">期数：</span>
+              ${titleText || '-'} · ${item.time}
+            </div>
+          </div>
+          
+          <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">精选生肖</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
+            ${zodiacsDetailHtml}
+          </div>
+          
+          ${drawResultHtml}
+        </div>
+      `;
+      modal.addEventListener('click', (e) => {
+        if(e.target === modal) modal.remove();
+      });
+      
+      document.body.appendChild(modal);
+    } catch(e) {
+      console.error('显示精选生肖历史详情失败', e);
+      Toast.show('显示详情失败');
     }
   },
 

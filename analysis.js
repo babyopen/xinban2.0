@@ -1430,4 +1430,5 @@ Business.isInDrawTime = () => {
   const now = new Date();
   const h = now.getHours();
   const m = now.getMinutes();
-  return h === 21
+  return h === 21 && m >= 30;
+};
