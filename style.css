@@ -618,6 +618,21 @@ body{
 
 .bottom-nav-item:active{transform:scale(0.95)}
 
+/* 我的页面菜单项 */
+.profile-menu-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:16px 20px;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+  transition:background var(--anim-fast);
+  font-size:15px;
+}
+.profile-menu-item:last-child{border-bottom:none}
+.profile-menu-item:hover{background:var(--bg-secondary)}
+.profile-menu-item:active{background:var(--bg-secondary)}
+
 /* 弹窗遮罩 */
 .modal-overlay{
   position:fixed;

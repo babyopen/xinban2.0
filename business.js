@@ -491,9 +491,12 @@ const Business = {
     if(index === 1) {
       // 分析页面
       Business.initAnalysisPage();
+    } else if(index === 2) {
+      // 记录页面
+      Business.renderFavoriteList();
     } else if(index === 3) {
       // 我的页面
-      Business.renderFavoriteList();
+      Business.initProfilePage();
     }
   },
 
@@ -639,7 +642,7 @@ const Business = {
     switch(tabName) {
       case 'prediction':
         // 切换到预测历史页面
-        Business.switchBottomNav(3);
+        Business.switchBottomNav(2);
         break;
       case 'record':
         // 切换到记录页面
@@ -653,8 +656,109 @@ const Business = {
         // 切换到分析页面
         Business.switchBottomNav(1);
         break;
+      case 'profile':
+        // 切换到我的页面
+        Business.switchBottomNav(3);
+        break;
       default:
         break;
     }
+  },
+
+  // ====================== 我的页面相关 ======================
+  /**
+   * 初始化我的页面
+   */
+  initProfilePage: () => {
+    // 生成用户ID（如果没有）
+    let userId = Storage.get('userId');
+    if(!userId) {
+      userId = 'U' + Date.now().toString(36).toUpperCase();
+      Storage.set('userId', userId);
+    }
+    const userIdEl = document.getElementById('userId');
+    if(userIdEl) {
+      userIdEl.textContent = userId;
+    }
+    
+    // 可以在这里添加更多我的页面初始化逻辑
+    console.log('我的页面初始化完成');
+  },
+
+  /**
+   * 打开设置
+   */
+  openSettings: () => {
+    Toast.show('设置功能开发中...');
+  },
+
+  /**
+   * 打开通知设置
+   */
+  openNotification: () => {
+    Toast.show('通知设置功能开发中...');
+  },
+
+  /**
+   * 打开隐私设置
+   */
+  openPrivacy: () => {
+    Toast.show('隐私设置功能开发中...');
+  },
+
+  /**
+   * 清除缓存
+   */
+  clearCache: () => {
+    if(confirm('确定要清除所有缓存数据吗？')) {
+      // 清除所有存储数据
+      Storage.remove(Storage.KEYS.HISTORY_CACHE);
+      Storage.remove(Storage.KEYS.SAVED_FILTERS);
+      Storage.remove('favorites');
+      Storage.remove('specialHistory');
+      Storage.remove('records');
+      
+      // 重置状态
+      StateManager.setState({
+        savedFilters: [],
+        favorites: [],
+        specialHistory: [],
+        records: []
+      }, false);
+      
+      // 重新渲染
+      Render.renderFilterList();
+      Business.renderFavoriteList();
+      
+      Toast.show('缓存已清除');
+    }
+  },
+
+  /**
+   * 打开帮助
+   */
+  openHelp: () => {
+    Toast.show('帮助功能开发中...');
+  },
+
+  /**
+   * 打开反馈
+   */
+  openFeedback: () => {
+    Toast.show('反馈功能开发中...');
+  },
+
+  /**
+   * 打开关于
+   */
+  openAbout: () => {
+    Toast.show('关于功能开发中...');
+  },
+
+  /**
+   * 检查更新
+   */
+  checkUpdate: () => {
+    Toast.show('当前已是最新版本');
   }
 };

@@ -37,9 +37,6 @@ const App = {
       // 初始化精选特码历史
       this.initSpecialHistory();
       
-      // 初始化记录模块
-      this.initRecord();
-      
       // 启动应用
       this.start();
       
@@ -155,18 +152,6 @@ const App = {
       console.log('精选特码历史模块初始化完成');
     } else {
       console.warn('精选特码历史模块未加载');
-    }
-  },
-
-  /**
-   * 初始化记录模块
-   */
-  initRecord() {
-    if(typeof Record !== 'undefined' && Record.init) {
-      // 记录模块初始化
-      console.log('记录模块初始化完成');
-    } else {
-      console.warn('记录模块未加载');
     }
   },
 
