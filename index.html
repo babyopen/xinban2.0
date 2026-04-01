@@ -733,7 +733,16 @@
             </div>
 
             <div class="selected-zodiacs">
-              <div class="conclusion-title">✨ 精选生肖</div>
+              <div class="conclusion-title" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>✨ 精选生肖</span>
+                <button class="btn-mini copy-zodiacs-btn" onclick="Business.copySelectedZodiacs()" title="复制生肖" style="font-size:12px;padding:4px 10px;display:flex;align-items:center;gap:4px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  复制
+                </button>
+              </div>
               <div id="selectedZodiacsGrid" class="selected-zodiacs-grid"></div>
             </div>
 
@@ -1033,56 +1042,487 @@ const Utils = {
   /**
    * 通用触摸滑动删除处理器
    */
-  SwipeDeleteHandler: {
+  /**
+   * 滑动处理器基类（工厂函数）
+   * 统一处理左滑/右滑逻辑，减少代码重复
+   */
+  _createSwipeHandler: (options) => {
+    const {
+      threshold = -150,
+      directionThreshold = 30,
+      maxAngle = 45,
+      isRightSwipe = false,
+      onSwipeStart = null,
+      onSwipeMove = null,
+      onSwipeEnd = null
+    } = options;
+
+    return {
+      _startX: {},
+      _startY: {},
+      _currentX: {},
+      _currentY: {},
+      _startTime: {},
+      _isHorizontal: {},
+      _hasDirection: {},
+      _isValidSwipe: {},
+      _threshold: threshold,
+      _directionThreshold: directionThreshold,
+      _maxAngle: maxAngle,
+      _isRightSwipe: isRightSwipe,
+
+      _getKey: (idx, prefix) => `${prefix}_${idx}`,
+
+      _getSwipeAngle: (deltaX, deltaY) => {
+        return Math.atan2(Math.abs(deltaY), Math.abs(deltaX)) * 180 / Math.PI;
+      },
+
+      _cleanup: function(key) {
+        delete this._startX[key];
+        delete this._startY[key];
+        delete this._currentX[key];
+        delete this._currentY[key];
+        delete this._startTime[key];
+        delete this._isHorizontal[key];
+        delete this._hasDirection[key];
+        delete this._isValidSwipe[key];
+      },
+
+      handleTouchStart: function(e, idx, prefix) {
+        const key = this._getKey(idx, prefix);
+        const touch = e.touches[0];
+        
+        this._startX[key] = touch.clientX;
+        this._startY[key] = touch.clientY;
+        this._currentX[key] = touch.clientX;
+        this._currentY[key] = touch.clientY;
+        this._startTime[key] = Date.now();
+        this._isHorizontal[key] = false;
+        this._hasDirection[key] = false;
+        this._isValidSwipe[key] = false;
+
+        if (onSwipeStart) {
+          onSwipeStart(e, key);
+        }
+      },
+
+      handleTouchMove: function(e, idx, prefix) {
+        const key = this._getKey(idx, prefix);
+        if (this._startX[key] === undefined) return;
+        
+        const touch = e.touches[0];
+        this._currentX[key] = touch.clientX;
+        this._currentY[key] = touch.clientY;
+        
+        const deltaX = touch.clientX - this._startX[key];
+        const deltaY = touch.clientY - this._startY[key];
+        const absDeltaX = Math.abs(deltaX);
+        const absDeltaY = Math.abs(deltaY);
+        
+        // 方向判断阶段
+        if (!this._hasDirection[key]) {
+          if (absDeltaX > this._directionThreshold || absDeltaY > this._directionThreshold) {
+            this._hasDirection[key] = true;
+            const angle = this._getSwipeAngle(deltaX, deltaY);
+            const isHorizontal = absDeltaX > absDeltaY && angle <= this._maxAngle;
+            this._isHorizontal[key] = isHorizontal;
+            
+            // 判断滑动方向是否符合要求
+            if (this._isRightSwipe) {
+              this._isValidSwipe[key] = isHorizontal && deltaX > 0;
+            } else {
+              this._isValidSwipe[key] = isHorizontal && deltaX < 0;
+            }
+          }
+        }
+        
+        // 如果不是有效滑动，不处理
+        if (!this._isValidSwipe[key]) {
+          return;
+        }
+        
+        // 阻止默认行为
+        e.preventDefault();
+        
+        if (onSwipeMove) {
+          onSwipeMove(e, key, deltaX, absDeltaX);
+        }
+      },
+
+      handleTouchEnd: function(e, idx, prefix, ...args) {
+        const key = this._getKey(idx, prefix);
+        
+        if (onSwipeEnd) {
+          const deltaX = (this._currentX[key] || this._startX[key]) - this._startX[key];
+          const deltaTime = Date.now() - (this._startTime[key] || 0);
+          onSwipeEnd(e, key, deltaX, deltaTime, ...args);
+        }
+        
+        this._cleanup(key);
+      }
+    };
+  },
+
+  /**
+   * 左滑删除处理器（精选特码历史）
+   */
+  SwipeDeleteHandler: null, // 将在下面初始化
+
+  /**
+   * 左滑复制处理器（精选生肖历史-旧版）
+   */
+  SwipeCopyHandler: null, // 将在下面初始化
+
+  /**
+   * 右滑复制处理器（精选特码/生肖历史）
+   */
+
+  /**
+   * 向右滑动复制处理器（优化版）
+   * 支持精选特码和精选生肖历史的右滑复制
+   * 特点：低延迟、高精度、60fps动画、视觉反馈
+   */
+  SwipeRightCopyHandler: {
     _startX: {},
+    _startY: {},
     _currentX: {},
-    _threshold: -150,
+    _currentY: {},
+    _startTime: {},
+    _threshold: 80, // 触发复制的滑动距离阈值（80px）
+    _directionThreshold: 15, // 方向判断阈值（15px）
+    _maxAngle: 30, // 最大允许角度（30度）
+    _isHorizontal: {},
+    _hasDirection: {},
+    _isRightSwipe: {}, // 是否为向右滑动
+
+    // 获取元素文本内容
+    _getElementText: (element) => {
+      // 提取所有文本，包括嵌套元素
+      const text = element.innerText || element.textContent || '';
+      return text.trim().replace(/\s+/g, ' ');
+    },
+
+    // 计算滑动角度
+    _getSwipeAngle: (deltaX, deltaY) => {
+      const angle = Math.atan2(Math.abs(deltaY), Math.abs(deltaX)) * 180 / Math.PI;
+      return angle;
+    },
+
+    // 显示滑动轨迹指示器
+    _showSwipeIndicator: (item, progress) => {
+      let indicator = item.querySelector('.swipe-indicator');
+      if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.className = 'swipe-indicator';
+        indicator.style.cssText = `
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 4px;
+          background: linear-gradient(to bottom, var(--success), #34C759);
+          transform: scaleY(0);
+          transform-origin: top;
+          transition: transform 0.1s ease-out;
+          z-index: 10;
+          border-radius: 2px;
+        `;
+        item.appendChild(indicator);
+      }
+      indicator.style.transform = `scaleY(${Math.min(progress, 1)})`;
+    },
+
+    // 隐藏滑动轨迹指示器
+    _hideSwipeIndicator: (item) => {
+      const indicator = item.querySelector('.swipe-indicator');
+      if (indicator) {
+        indicator.style.transform = 'scaleY(0)';
+        setTimeout(() => indicator.remove(), 200);
+      }
+    },
+
+    // 显示复制成功反馈
+    _showCopyFeedback: (item, text) => {
+      // 创建成功提示
+      const feedback = document.createElement('div');
+      feedback.className = 'copy-feedback';
+      feedback.style.cssText = `
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0);
+        background: var(--success);
+        color: #fff;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 4px 12px rgba(52, 199, 89, 0.4);
+        z-index: 100;
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        pointer-events: none;
+      `;
+      feedback.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        已复制
+      `;
+      item.appendChild(feedback);
+
+      // 动画显示
+      requestAnimationFrame(() => {
+        feedback.style.transform = 'translate(-50%, -50%) scale(1)';
+      });
+
+      // 2秒后移除
+      setTimeout(() => {
+        feedback.style.transform = 'translate(-50%, -50%) scale(0)';
+        setTimeout(() => feedback.remove(), 300);
+      }, 2000);
+    },
+
+    // 执行复制操作
+    _performCopy: async (text, item) => {
+      try {
+        if (!text || text.trim() === '') {
+          Toast.show('暂无内容可复制');
+          return false;
+        }
+
+        // 使用现代 Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          // 降级方案
+          const textArea = document.createElement('textarea');
+          textArea.value = text;
+          textArea.style.cssText = 'position:fixed;left:-9999px;top:0;';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+          if (!successful) throw new Error('复制失败');
+        }
+
+        // 显示成功反馈
+        Utils.SwipeRightCopyHandler._showCopyFeedback(item, text);
+        Toast.show(`已复制: ${text.substring(0, 20)}${text.length > 20 ? '...' : ''}`);
+        return true;
+      } catch (e) {
+        console.error('复制失败', e);
+        Toast.show('复制失败，请手动复制');
+        return false;
+      }
+    },
 
     handleTouchStart: (e, idx, prefix) => {
-      Utils.SwipeDeleteHandler._startX[`${prefix}_${idx}`] = e.touches[0].clientX;
-      Utils.SwipeDeleteHandler._currentX[`${prefix}_${idx}`] = e.touches[0].clientX;
+      const key = `${prefix}_${idx}`;
+      const touch = e.touches[0];
+      
+      Utils.SwipeRightCopyHandler._startX[key] = touch.clientX;
+      Utils.SwipeRightCopyHandler._startY[key] = touch.clientY;
+      Utils.SwipeRightCopyHandler._currentX[key] = touch.clientX;
+      Utils.SwipeRightCopyHandler._currentY[key] = touch.clientY;
+      Utils.SwipeRightCopyHandler._startTime[key] = Date.now();
+      Utils.SwipeRightCopyHandler._isHorizontal[key] = false;
+      Utils.SwipeRightCopyHandler._hasDirection[key] = false;
+      Utils.SwipeRightCopyHandler._isRightSwipe[key] = false;
     },
 
     handleTouchMove: (e, idx, prefix) => {
       const key = `${prefix}_${idx}`;
-      if(Utils.SwipeDeleteHandler._startX[key] === undefined) return;
+      if (Utils.SwipeRightCopyHandler._startX[key] === undefined) return;
       
-      const currentX = e.touches[0].clientX;
-      Utils.SwipeDeleteHandler._currentX[key] = currentX;
+      const touch = e.touches[0];
+      Utils.SwipeRightCopyHandler._currentX[key] = touch.clientX;
+      Utils.SwipeRightCopyHandler._currentY[key] = touch.clientY;
       
-      const deltaX = currentX - Utils.SwipeDeleteHandler._startX[key];
+      const deltaX = touch.clientX - Utils.SwipeRightCopyHandler._startX[key];
+      const deltaY = touch.clientY - Utils.SwipeRightCopyHandler._startY[key];
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+      
+      // 方向判断阶段（低延迟，15px阈值）
+      if (!Utils.SwipeRightCopyHandler._hasDirection[key]) {
+        if (absDeltaX > Utils.SwipeRightCopyHandler._directionThreshold || 
+            absDeltaY > Utils.SwipeRightCopyHandler._directionThreshold) {
+          Utils.SwipeRightCopyHandler._hasDirection[key] = true;
+          
+          // 计算滑动角度
+          const angle = Utils.SwipeRightCopyHandler._getSwipeAngle(deltaX, deltaY);
+          
+          // 判断是否为水平滑动且角度在允许范围内
+          const isHorizontal = absDeltaX > absDeltaY && angle <= Utils.SwipeRightCopyHandler._maxAngle;
+          Utils.SwipeRightCopyHandler._isHorizontal[key] = isHorizontal;
+          Utils.SwipeRightCopyHandler._isRightSwipe[key] = deltaX > 0; // 向右滑动
+          
+          // 如果不是向右滑动，不处理
+          if (!isHorizontal || deltaX <= 0) {
+            return;
+          }
+        }
+      }
+      
+      // 如果不是向右滑动，不处理
+      if (!Utils.SwipeRightCopyHandler._isHorizontal[key] || 
+          !Utils.SwipeRightCopyHandler._isRightSwipe[key]) {
+        return;
+      }
+      
+      // 阻止默认行为
+      e.preventDefault();
+      
       const item = e.currentTarget;
-      const content = item.querySelector('.special-history-content');
-      const deleteBtn = item.querySelector('.special-history-delete');
       
-      if(deltaX < 0 && deltaX > Utils.SwipeDeleteHandler._threshold) {
-        content.style.transform = `translateX(${deltaX}px)`;
-        deleteBtn.style.transform = `translateX(${100 + deltaX / Utils.SwipeDeleteHandler._threshold * 100}%)`;
-      } else if(deltaX <= Utils.SwipeDeleteHandler._threshold) {
-        content.style.transform = `translateX(${Utils.SwipeDeleteHandler._threshold}px)`;
-        deleteBtn.style.transform = 'translateX(0)';
+      // 计算滑动进度（0-1）
+      const progress = Math.min(absDeltaX / Utils.SwipeRightCopyHandler._threshold, 1);
+      
+      // 显示滑动轨迹指示器
+      Utils.SwipeRightCopyHandler._showSwipeIndicator(item, progress);
+      
+      // 添加视觉反馈 - 轻微右移
+      const content = item.querySelector('.special-history-content');
+      if (content) {
+        const translateX = Math.min(deltaX * 0.3, 30); // 最大移动30px
+        content.style.transform = `translateX(${translateX}px)`;
+        content.style.transition = 'transform 0.05s ease-out';
+      }
+      
+      // 达到阈值时改变指示器颜色
+      const indicator = item.querySelector('.swipe-indicator');
+      if (indicator && absDeltaX >= Utils.SwipeRightCopyHandler._threshold) {
+        indicator.style.background = 'linear-gradient(to bottom, #34C759, #30D158)';
+        indicator.style.boxShadow = '0 0 8px rgba(52, 199, 89, 0.6)';
       }
     },
 
-    handleTouchEnd: (e, idx, prefix) => {
+    handleTouchEnd: (e, idx, prefix, getTextCallback) => {
       const key = `${prefix}_${idx}`;
       const item = e.currentTarget;
+      
+      // 恢复内容位置
       const content = item.querySelector('.special-history-content');
-      const deleteBtn = item.querySelector('.special-history-delete');
-      
-      const deltaX = Utils.SwipeDeleteHandler._currentX[key] - Utils.SwipeDeleteHandler._startX[key];
-      
-      if(deltaX <= Utils.SwipeDeleteHandler._threshold / 2) {
-        content.style.transform = `translateX(${Utils.SwipeDeleteHandler._threshold}px)`;
-        deleteBtn.style.transform = 'translateX(0)';
-      } else {
+      if (content) {
         content.style.transform = 'translateX(0)';
-        deleteBtn.style.transform = 'translateX(100%)';
+        content.style.transition = 'transform 0.3s ease-out';
       }
       
-      delete Utils.SwipeDeleteHandler._startX[key];
-      delete Utils.SwipeDeleteHandler._currentX[key];
+      // 如果不是向右滑动，直接清理
+      if (!Utils.SwipeRightCopyHandler._isHorizontal[key] || 
+          !Utils.SwipeRightCopyHandler._isRightSwipe[key]) {
+        Utils.SwipeRightCopyHandler._hideSwipeIndicator(item);
+        Utils.SwipeRightCopyHandler._cleanup(key);
+        return;
+      }
+      
+      const deltaX = Utils.SwipeRightCopyHandler._currentX[key] - Utils.SwipeRightCopyHandler._startX[key];
+      const deltaTime = Date.now() - Utils.SwipeRightCopyHandler._startTime[key];
+      
+      // 判断是否达到触发条件（距离阈值 或 快速滑动）
+      const isQuickSwipe = deltaTime < 200 && deltaX > 40; // 快速滑动（200ms内40px）
+      const isLongSwipe = deltaX >= Utils.SwipeRightCopyHandler._threshold; // 长距离滑动
+      
+      if (isQuickSwipe || isLongSwipe) {
+        // 获取要复制的文本
+        const text = getTextCallback ? getTextCallback(item) : 
+                     Utils.SwipeRightCopyHandler._getElementText(content || item);
+        
+        // 执行复制
+        Utils.SwipeRightCopyHandler._performCopy(text, item);
+      }
+      
+      // 隐藏指示器并清理
+      Utils.SwipeRightCopyHandler._hideSwipeIndicator(item);
+      Utils.SwipeRightCopyHandler._cleanup(key);
+    },
+
+    // 清理状态
+    _cleanup: (key) => {
+      delete Utils.SwipeRightCopyHandler._startX[key];
+      delete Utils.SwipeRightCopyHandler._startY[key];
+      delete Utils.SwipeRightCopyHandler._currentX[key];
+      delete Utils.SwipeRightCopyHandler._currentY[key];
+      delete Utils.SwipeRightCopyHandler._startTime[key];
+      delete Utils.SwipeRightCopyHandler._isHorizontal[key];
+      delete Utils.SwipeRightCopyHandler._hasDirection[key];
+      delete Utils.SwipeRightCopyHandler._isRightSwipe[key];
     }
+  },
+
+  // 在应用初始化时设置滑动处理器
+  initSwipeHandlers: () => {
+    // 左滑删除处理器（精选特码历史）
+    Utils.SwipeDeleteHandler = Utils._createSwipeHandler({
+      threshold: -150,
+      directionThreshold: 30,
+      maxAngle: 45,
+      isRightSwipe: false,
+      onSwipeMove: (e, key, deltaX, absDeltaX) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX < 0 && deltaX > -150) {
+          content.style.transform = `translateX(${deltaX}px)`;
+          deleteBtn.style.transform = `translateX(${100 + deltaX / -150 * 100}%)`;
+        } else if (deltaX <= -150) {
+          content.style.transform = 'translateX(-150px)';
+          deleteBtn.style.transform = 'translateX(0)';
+        }
+      },
+      onSwipeEnd: (e, key, deltaX, deltaTime) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX <= -75) {
+          content.style.transform = 'translateX(-150px)';
+          deleteBtn.style.transform = 'translateX(0)';
+        } else {
+          content.style.transform = 'translateX(0)';
+          deleteBtn.style.transform = 'translateX(100%)';
+        }
+      }
+    });
+
+    // 左滑复制处理器（精选生肖历史-旧版，保留兼容）
+    Utils.SwipeCopyHandler = Utils._createSwipeHandler({
+      threshold: -150,
+      directionThreshold: 30,
+      maxAngle: 45,
+      isRightSwipe: false,
+      onSwipeMove: (e, key, deltaX, absDeltaX) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const copyBtn = item.querySelector('.special-history-copy');
+        
+        if (deltaX < 0 && deltaX > -150) {
+          content.style.transform = `translateX(${deltaX}px)`;
+          copyBtn.style.transform = `translateX(${100 + deltaX / -150 * 100}%)`;
+        } else if (deltaX <= -150) {
+          content.style.transform = 'translateX(-150px)';
+          copyBtn.style.transform = 'translateX(0)';
+        }
+      },
+      onSwipeEnd: (e, key, deltaX, deltaTime) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const copyBtn = item.querySelector('.special-history-copy');
+        
+        if (deltaX <= -75) {
+          content.style.transform = 'translateX(-150px)';
+          copyBtn.style.transform = 'translateX(0)';
+        } else {
+          content.style.transform = 'translateX(0)';
+          copyBtn.style.transform = 'translateX(100%)';
+        }
+      }
+    });
   },
 
   /**
@@ -2566,6 +3006,22 @@ const Business = {
       }
     });
     
+    // 页面切换时滚动到顶部
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+      
+      // 同时滚动所有页面容器到顶部
+      pages.forEach(pageId => {
+        const pageEl = document.getElementById(pageId);
+        if(pageEl) {
+          pageEl.scrollTop = 0;
+        }
+      });
+    });
+    
     // 控制顶部展示区的显示/隐藏：仅在筛选页面(index=0)显示
     const topBox = document.getElementById('topBox');
     if(topBox) {
@@ -2594,6 +3050,16 @@ const Business = {
     }
     if(bottomNav) {
       bottomNav.classList.toggle('needs-space', index === 0 || index === 1);
+    }
+    
+    // 切换到记录页面时重新渲染精选特码历史和精选生肖历史
+    if(index === 2) {
+      try {
+        Business.renderSpecialHistory();
+        Business.renderSelectedZodiacHistory();
+      } catch(e) {
+        console.error('渲染记录页面内容失败', e);
+      }
     }
     
     // 根据页面切换快捷导航菜单内容
@@ -3751,11 +4217,11 @@ const Business = {
           }).join('');
           
           selectedHtml += `
-            <div class="selected-zodiac-item">
-              <div class="zodiac-name">${zod}</div>
+            <div class="selected-zodiac-item" data-zodiac="${zod}" onclick="Business.showSelectedZodiacRatingDetail('${zod}')">
               <div class="zodiac-periods">
                 ${periodTags}
               </div>
+              <div class="zodiac-name">${zod}</div>
             </div>
           `;
         });
@@ -6645,8 +7111,14 @@ const Business = {
           drawNumberHtml = `<span class="${drawClass}" style="margin-left:auto;">${String(item.drawResult).padStart(2, '0')}</span>`;
         }
         
+        // 准备复制文本（号码列表）
+        const numbersText = item.numbers.map(n => String(n).padStart(2, '0')).join(' ');
+        
         html += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;" ontouchstart="Utils.SwipeDeleteHandler.handleTouchStart(event, ${globalIdx}, 'specialHistory')" ontouchmove="Utils.SwipeDeleteHandler.handleTouchMove(event, ${globalIdx}, 'specialHistory')" ontouchend="Utils.SwipeDeleteHandler.handleTouchEnd(event, ${globalIdx}, 'specialHistory')">
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;" 
+            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'specialHistory')" 
+            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'specialHistory')" 
+            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'specialHistory', (item) => '${numbersText}')">
             <div class="special-history-content" style="transition:transform 0.3s ease;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="color:var(--sub-text);font-size:11px;">
@@ -6658,9 +7130,6 @@ const Business = {
                   <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${numbersHtml}${drawNumberHtml}</div>
                 </div>
               </div>
-            </div>
-            <div class="special-history-delete" style="position:absolute;right:0;top:0;bottom:0;width:100px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;transform:translateX(100%);transition:transform 0.3s ease;cursor:pointer;" onclick="Business.deleteSpecialHistoryItem(${globalIdx})">
-              删除
             </div>
           </div>
         `;
@@ -7203,6 +7672,242 @@ const Business = {
   },
 
   /**
+   * 切换生肖卡片选中状态
+   * @param {HTMLElement} element - 点击的卡片元素
+   * @param {string} zodiac - 生肖名称
+   */
+  toggleZodiacSelection: (element, zodiac) => {
+    try {
+      // 阻止事件冒泡
+      event.stopPropagation();
+      
+      const isSelected = element.classList.contains('selected');
+      
+      if (isSelected) {
+        // 取消选中：添加取消动画类
+        element.classList.add('deselecting');
+        element.classList.remove('selected');
+        
+        // 动画结束后移除动画类
+        setTimeout(() => {
+          element.classList.remove('deselecting');
+        }, 300);
+        
+        // 可以在这里添加取消选中的业务逻辑
+        console.log(`取消选中生肖: ${zodiac}`);
+      } else {
+        // 选中：清除其他已选中项（单选模式）或允许多选
+        // 如果要实现单选模式，取消下面注释：
+        // document.querySelectorAll('.selected-zodiac-item.selected').forEach(item => {
+        //   item.classList.remove('selected');
+        // });
+        
+        element.classList.add('selected');
+        console.log(`选中生肖: ${zodiac}`);
+      }
+    } catch (e) {
+      console.error('切换选中状态失败', e);
+    }
+  },
+
+  /**
+   * 清除所有选中状态
+   */
+  clearAllZodiacSelections: () => {
+    try {
+      const selectedItems = document.querySelectorAll('.selected-zodiac-item.selected');
+      selectedItems.forEach((item, index) => {
+        // 添加延迟，实现依次取消的视觉效果
+        setTimeout(() => {
+          item.classList.add('deselecting');
+          item.classList.remove('selected');
+          
+          setTimeout(() => {
+            item.classList.remove('deselecting');
+          }, 300);
+        }, index * 50); // 每个卡片延迟50ms
+      });
+      
+      console.log(`已清除 ${selectedItems.length} 个选中状态`);
+    } catch (e) {
+      console.error('清除选中状态失败', e);
+    }
+  },
+
+  /**
+   * 显示精选生肖详细评分模态框
+   * @param {string} zodiac - 生肖名称
+   */
+  showSelectedZodiacRatingDetail: (zodiac) => {
+    try {
+      const periods = [10, 20, 30];
+      const periodLabels = { 10: '10期', 20: '20期', 30: '30期' };
+      
+      let periodsHtml = '';
+      
+      periods.forEach(period => {
+        const data = Business.calcZodiacAnalysis(period);
+        if (!data) return;
+        
+        const score = data.zodiacScores ? data.zodiacScores[zodiac] : 0;
+        const details = data.zodiacDetails ? data.zodiacDetails[zodiac] : { cold: 0, hot: 0, shape: 0, interval: 0 };
+        const count = data.zodCount ? data.zodCount[zodiac] : 0;
+        const miss = data.zodMiss ? data.zodMiss[zodiac] : 0;
+        const avgMiss = data.zodAvgMiss ? data.zodAvgMiss[zodiac] : 0;
+        
+        // 查找排名
+        let rank = '-';
+        if (data.sortedZodiacs) {
+          const idx = data.sortedZodiacs.findIndex(([z]) => z === zodiac);
+          if (idx !== -1) rank = `第${idx + 1}名`;
+        }
+        
+        // 评分标签
+        const tags = [];
+        if (details.cold > 0) tags.push(`<span style="background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-size:11px;">冷${details.cold}</span>`);
+        if (details.hot > 0) tags.push(`<span style="background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-size:11px;">热${details.hot}</span>`);
+        if (details.shape > 0) tags.push(`<span style="background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-size:11px;">形${details.shape}</span>`);
+        if (details.interval > 0) tags.push(`<span style="background:var(--bg-secondary);padding:2px 8px;border-radius:12px;font-size:11px;">间${details.interval}</span>`);
+        
+        periodsHtml += `
+          <div style="margin-bottom:16px;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--text);">${periodLabels[period]}分析</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">冷号状态</div>
+                <div style="font-size:18px;font-weight:700;color:#FF3B30">${details.cold}分</div>
+              </div>
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">热号状态</div>
+                <div style="font-size:18px;font-weight:700;color:var(--primary)">${details.hot}分</div>
+              </div>
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">形态匹配</div>
+                <div style="font-size:18px;font-weight:700;color:#FF9500">${details.shape}分</div>
+              </div>
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">间隔匹配</div>
+                <div style="font-size:18px;font-weight:700;color:#5856D6">${details.interval}分</div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:12px;">
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">出现次数</div>
+                <div style="font-size:18px;font-weight:700;color:var(--primary)">${count}次</div>
+              </div>
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">遗漏期数</div>
+                <div style="font-size:18px;font-weight:700;color:var(--primary)">${miss}期</div>
+              </div>
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">平均遗漏</div>
+                <div style="font-size:18px;font-weight:700;color:var(--primary)">${avgMiss}期</div>
+              </div>
+              <div class="score-glass-card">
+                <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">排名</div>
+                <div style="font-size:18px;font-weight:700;color:var(--primary)">${rank}</div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <div class="modal-title">${zodiac} - 详细评分</div>
+            <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          <div style="text-align:center;margin-bottom:20px;">
+            <div style="font-size:48px;font-weight:700;color:var(--primary);margin-bottom:8px;">${zodiac}</div>
+            <div style="color:var(--sub-text);font-size:13px;">多维度综合评分分析</div>
+          </div>
+          ${periodsHtml}
+        </div>
+      `;
+      
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+      
+      document.body.appendChild(modal);
+    } catch (e) {
+      console.error('显示生肖详细评分失败', e);
+      Toast.show('加载详情失败');
+    }
+  },
+
+  /**
+   * 复制精选生肖到剪贴板
+   */
+  copySelectedZodiacs: async () => {
+    try {
+      // 获取精选生肖数据
+      const selectedZodiacsMap = Business.getSelectedZodiacs();
+      
+      if (!selectedZodiacsMap || selectedZodiacsMap.size === 0) {
+        Toast.show('暂无生肖可复制');
+        return;
+      }
+      
+      // 提取生肖名称并拼接成文本
+      const zodiacNames = Array.from(selectedZodiacsMap.keys());
+      const textToCopy = zodiacNames.join(' ');
+      
+      // 使用现代 Clipboard API 复制文本
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        // 降级方案：使用传统的 execCommand
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (!successful) {
+          throw new Error('复制失败');
+        }
+      }
+      
+      // 显示成功提示
+      Toast.show(`已复制: ${textToCopy}`);
+      
+      // 按钮视觉反馈
+      const copyBtn = document.querySelector('.copy-zodiacs-btn');
+      if (copyBtn) {
+        const originalHtml = copyBtn.innerHTML;
+        copyBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          已复制
+        `;
+        copyBtn.style.background = 'var(--success)';
+        copyBtn.style.color = '#fff';
+        
+        // 2秒后恢复按钮状态
+        setTimeout(() => {
+          copyBtn.innerHTML = originalHtml;
+          copyBtn.style.background = '';
+          copyBtn.style.color = '';
+        }, 2000);
+      }
+    } catch (e) {
+      console.error('复制生肖失败', e);
+      Toast.show('复制失败，请手动复制');
+    }
+  },
+
+  /**
    * 渲染精选生肖历史
    */
   renderSelectedZodiacHistory: () => {
@@ -7242,8 +7947,15 @@ const Business = {
         
         const actualZodiacClass = item.isHit ? 'history-tag hit' : 'history-tag miss';
         
+        // 准备复制文本
+        const zodiacNames = item.selectedZodiacs.map(z => z.zodiac).join(' ');
+        
         html += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;cursor:pointer;" ontouchstart="Utils.SwipeDeleteHandler.handleTouchStart(event, ${globalIdx}, 'selectedZodiac')" ontouchmove="Utils.SwipeDeleteHandler.handleTouchMove(event, ${globalIdx}, 'selectedZodiac')" ontouchend="Utils.SwipeDeleteHandler.handleTouchEnd(event, ${globalIdx}, 'selectedZodiac')" onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)">
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;cursor:pointer;" 
+            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'selectedZodiac')" 
+            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'selectedZodiac')" 
+            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'selectedZodiac', (item) => '${zodiacNames.replace(/'/g, "\\'")}')" 
+            onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)">
             <div class="special-history-content" style="transition:transform 0.3s ease;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="color:var(--sub-text);font-size:11px;">
@@ -7254,9 +7966,6 @@ const Business = {
                 <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${zodiacTags}</div>
                 ${item.actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${item.actualZodiac}</span>` : ''}
               </div>
-            </div>
-            <div class="special-history-delete" style="position:absolute;right:0;top:0;bottom:0;width:100px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;transform:translateX(100%);transition:transform 0.3s ease;cursor:pointer;" onclick="Business.deleteSelectedZodiacHistoryItem(${globalIdx})">
-              删除
             </div>
           </div>
         `;
@@ -7318,6 +8027,60 @@ const Business = {
   },
 
   /**
+   * 复制精选生肖历史记录到剪贴板
+   * @param {number} idx - 记录索引
+   * @param {string} zodiacNames - 生肖名称（已拼接好的字符串）
+   */
+  copySelectedZodiacHistoryItem: async (idx, zodiacNames) => {
+    try {
+      // 阻止事件冒泡
+      event.stopPropagation();
+      
+      if (!zodiacNames || zodiacNames.trim() === '') {
+        Toast.show('暂无生肖可复制');
+        return;
+      }
+      
+      // 使用现代 Clipboard API 复制文本
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(zodiacNames);
+      } else {
+        // 降级方案：使用传统的 execCommand
+        const textArea = document.createElement('textarea');
+        textArea.value = zodiacNames;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (!successful) {
+          throw new Error('复制失败');
+        }
+      }
+      
+      // 显示成功提示
+      Toast.show(`已复制: ${zodiacNames}`);
+      
+      // 恢复卡片位置
+      const item = document.querySelector(`.special-history-item[data-index="${idx}"]`);
+      if (item) {
+        const content = item.querySelector('.special-history-content');
+        const copyBtn = item.querySelector('.special-history-copy');
+        if (content) content.style.transform = 'translateX(0)';
+        if (copyBtn) copyBtn.style.transform = 'translateX(100%)';
+      }
+    } catch (e) {
+      console.error('复制生肖失败', e);
+      Toast.show('复制失败，请手动复制');
+    }
+  },
+
+  /**
    * 显示精选生肖历史详情弹窗
    */
   showSelectedZodiacDetail: (idx, e) => {
@@ -7345,9 +8108,9 @@ const Business = {
         const hitClass = isMatch ? 'background:var(--bg-secondary);border:2px solid var(--success);' : '';
         
         zodiacsDetailHtml += `
-          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px;background:var(--bg-secondary);border-radius:12px;${hitClass}">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px;background:var(--bg-secondary);border-radius:12px;min-width:70px;min-height:70px;${hitClass}">
             <div style="font-size:18px;font-weight:600;">${z.zodiac}</div>
-            <div style="display:flex;gap:4px;">${periodTags}</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;">${periodTags}</div>
           </div>
         `;
       });
@@ -7984,9 +8747,11 @@ async function initApp() {
     StateManager.setState({ selectedZodiacHistory: selectedZodiacHistory }, false);
     Business.renderSelectedZodiacHistory();
 
-    // 12. 初始化事件绑定
+    // 12. 初始化滑动处理器
+    Utils.initSwipeHandlers();
+    // 13. 初始化事件绑定
     EventBinder.init();
-    // 13. 启动分析页面倒计时和自动刷新检查
+    // 14. 启动分析页面倒计时和自动刷新检查
     Business.startCountdown();
     Business.checkDrawTimeLoop();
     // 14. 设置底部导航栏初始样式（筛选页面需要给快捷导航让位置）

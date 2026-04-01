@@ -1695,6 +1695,8 @@ input[type="checkbox"]{
   transition: all 0.2s ease;
   color: var(--text);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  position: relative;
 }
 
 .selected-zodiac-item:hover {
@@ -1709,21 +1711,39 @@ input[type="checkbox"]{
   margin-bottom: 4px;
 }
 
+/* 优化期数标签显示 - 左上角定位 */
 .selected-zodiac-item .zodiac-periods {
-  font-size: 10px;
-  color: var(--text-secondary);
+  position: absolute;
+  top: 4px;
+  left: 4px;
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 2px;
+  margin: 0;
+  justify-content: flex-start;
 }
 
 .selected-zodiac-period-tag {
-  padding: 2px 6px;
-  border-radius: 8px;
-  font-size: 9px;
-  background: rgba(0,0,0,0.1);
+  padding: 1px 4px;
+  border-radius: 6px;
+  font-size: 8px;
+  background: rgba(0,0,0,0.15);
+  color: var(--text-secondary);
+  font-weight: 600;
+  min-width: 14px;
+  text-align: center;
+}
+
+/* 选中状态下的期数标签 */
+.selected-zodiac-item.selected .selected-zodiac-period-tag {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* 调整生肖名称位置，避免与左上角标签重叠 */
+.selected-zodiac-item .zodiac-name {
+  margin-top: 12px;
+  margin-bottom: 2px;
 }
 
 @media (max-width: 480px) {
