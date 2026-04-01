@@ -1505,6 +1505,108 @@ const Utils = {
       }
     });
 
+    // 左滑删除处理器（精选生肖历史）
+    Utils.SwipeDeleteHandlerSelectedZodiac = Utils._createSwipeHandler({
+      threshold: -150,
+      directionThreshold: 30,
+      maxAngle: 45,
+      isRightSwipe: false,
+      onSwipeMove: (e, key, deltaX, absDeltaX) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX < 0 && deltaX > -150) {
+          content.style.transform = `translateX(${deltaX}px)`;
+          if(deleteBtn) deleteBtn.style.transform = `translateX(${100 + deltaX / -150 * 100}%)`;
+        } else if (deltaX <= -150) {
+          content.style.transform = 'translateX(-150px)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
+        }
+      },
+      onSwipeEnd: (e, key, deltaX, deltaTime) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX <= -75) {
+          content.style.transform = 'translateX(-150px)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
+        } else {
+          content.style.transform = 'translateX(0)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(100%)';
+        }
+      }
+    });
+
+    // 左滑删除处理器（预测历史）
+    Utils.SwipeDeleteHandlerPrediction = Utils._createSwipeHandler({
+      threshold: -150,
+      directionThreshold: 30,
+      maxAngle: 45,
+      isRightSwipe: false,
+      onSwipeMove: (e, key, deltaX, absDeltaX) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX < 0 && deltaX > -150) {
+          content.style.transform = `translateX(${deltaX}px)`;
+          if(deleteBtn) deleteBtn.style.transform = `translateX(${100 + deltaX / -150 * 100}%)`;
+        } else if (deltaX <= -150) {
+          content.style.transform = 'translateX(-150px)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
+        }
+      },
+      onSwipeEnd: (e, key, deltaX, deltaTime) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX <= -75) {
+          content.style.transform = 'translateX(-150px)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
+        } else {
+          content.style.transform = 'translateX(0)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(100%)';
+        }
+      }
+    });
+
+    // 左滑删除处理器（精选特码历史）
+    Utils.SwipeDeleteHandlerSpecial = Utils._createSwipeHandler({
+      threshold: -150,
+      directionThreshold: 30,
+      maxAngle: 45,
+      isRightSwipe: false,
+      onSwipeMove: (e, key, deltaX, absDeltaX) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX < 0 && deltaX > -150) {
+          content.style.transform = `translateX(${deltaX}px)`;
+          if(deleteBtn) deleteBtn.style.transform = `translateX(${100 + deltaX / -150 * 100}%)`;
+        } else if (deltaX <= -150) {
+          content.style.transform = 'translateX(-150px)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
+        }
+      },
+      onSwipeEnd: (e, key, deltaX, deltaTime) => {
+        const item = e.currentTarget;
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        
+        if (deltaX <= -75) {
+          content.style.transform = 'translateX(-150px)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
+        } else {
+          content.style.transform = 'translateX(0)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(100%)';
+        }
+      }
+    });
+
     // 左滑复制处理器（精选生肖历史-旧版，保留兼容）
     Utils.SwipeCopyHandler = Utils._createSwipeHandler({
       threshold: -150,
@@ -5994,13 +6096,19 @@ const Business = {
         
         html += `
           <div class="special-history-item" data-index="${idx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
-            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${idx}, 'predictionHistory')" 
-            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${idx}, 'predictionHistory')" 
-            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${idx}, 'predictionHistory', (item) => '${predictionText.replace(/'/g, "\\'")}')">
-            <div class="special-history-content" style="transition:transform 0.3s ease;">
-              <div style="color:var(--sub-text);margin-bottom:8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;">
-                <span>${titleText}</span>
-                <span>${item.time}</span>
+            ontouchstart="Utils.SwipeDeleteHandlerPrediction.handleTouchStart(event, ${idx}, 'predictionHistory')" 
+            ontouchmove="Utils.SwipeDeleteHandlerPrediction.handleTouchMove(event, ${idx}, 'predictionHistory')" 
+            ontouchend="Utils.SwipeDeleteHandlerPrediction.handleTouchEnd(event, ${idx}, 'predictionHistory')"
+            onclick="Business.showPredictionHistoryDetail(${idx}, event)">
+            <div class="special-history-delete" onclick="Business.deleteZodiacPredictionHistoryItem(${idx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
+              <span style="font-size:14px;">删除</span>
+            </div>
+            <div class="special-history-content" style="transition:transform 0.3s ease;position:relative;z-index:5;background:var(--card);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="color:var(--sub-text);font-size:11px;">
+                  <span>${titleText}</span>
+                </div>
+                <button class="btn-mini" onclick="Business.copyZodiacPredictionHistory(${idx}, '${predictionText.replace(/'/g, "\\'")}', event)" style="margin-left:8px;">复制</button>
               </div>
               <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
                 <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${predictions}</div>
@@ -6336,6 +6444,79 @@ const Business = {
       Toast.show('已清空预测历史');
     } catch(e) {
       console.error('清空预测历史失败', e);
+    }
+  },
+
+  /**
+   * 删除单条预测历史记录
+   * @param {number} idx - 记录索引
+   */
+  deleteZodiacPredictionHistoryItem: (idx) => {
+    try {
+      if(!confirm('确定删除该记录？')) return;
+      const state = StateManager._state;
+      const history = state.zodiacPredictionHistory || [];
+      
+      if(idx < 0 || idx >= history.length) {
+        Toast.show('删除失败：记录不存在');
+        return;
+      }
+      
+      history.splice(idx, 1);
+      
+      Storage.saveZodiacPredictionHistory(history);
+      StateManager.setState({ zodiacPredictionHistory: history }, false);
+      Business.renderZodiacPredictionHistory();
+      Toast.show('已删除');
+    } catch(e) {
+      console.error('删除预测历史记录失败', e);
+      Toast.show('删除失败');
+    }
+  },
+
+  /**
+   * 复制预测历史记录的生肖到剪贴板
+   * @param {number} idx - 记录索引
+   * @param {string} zodiacNames - 生肖名称（已拼接好的字符串）
+   * @param {Event} evt - 点击事件
+   */
+  copyZodiacPredictionHistory: async (idx, zodiacNames, evt) => {
+    try {
+      // 阻止事件冒泡
+      evt.stopPropagation();
+      
+      if (!zodiacNames || zodiacNames.trim() === '') {
+        Toast.show('暂无生肖可复制');
+        return;
+      }
+      
+      // 使用现代 Clipboard API 复制文本
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(zodiacNames);
+      } else {
+        // 降级方案：使用传统的 execCommand
+        const textArea = document.createElement('textarea');
+        textArea.value = zodiacNames;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (!successful) {
+          throw new Error('复制失败');
+        }
+      }
+      
+      // 显示成功提示
+      Toast.show(`已复制：${zodiacNames}`);
+    } catch (e) {
+      console.error('复制生肖失败', e);
+      Toast.show('复制失败，请手动复制');
     }
   },
 
@@ -7245,14 +7426,19 @@ const Business = {
         
         html += `
           <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
-            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'specialHistory')" 
-            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'specialHistory')" 
-            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'specialHistory', (item) => '${numbersText}')">
-            <div class="special-history-content" style="transition:transform 0.3s ease;">
+            ontouchstart="Utils.SwipeDeleteHandlerSpecial.handleTouchStart(event, ${globalIdx}, 'specialHistory')" 
+            ontouchmove="Utils.SwipeDeleteHandlerSpecial.handleTouchMove(event, ${globalIdx}, 'specialHistory')" 
+            ontouchend="Utils.SwipeDeleteHandlerSpecial.handleTouchEnd(event, ${globalIdx}, 'specialHistory')"
+            onclick="Business.showSpecialHistoryDetail(${globalIdx}, event)">
+            <div class="special-history-delete" onclick="Business.deleteSpecialHistoryItem(${globalIdx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
+              <span style="font-size:14px;">删除</span>
+            </div>
+            <div class="special-history-content" style="transition:transform 0.3s ease;position:relative;z-index:5;background:var(--card);">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="color:var(--sub-text);font-size:11px;">
                   <span>${titleText}</span>
                 </div>
+                <button class="btn-mini" onclick="Business.copySpecialHistory(${globalIdx}, '${numbersText}', event)" style="margin-left:8px;">复制</button>
               </div>
               <div style="display:flex;align-items:flex-start;gap:8px;">
                 <div style="flex:1;min-width:0;">
@@ -7362,6 +7548,52 @@ const Business = {
     } catch(e) {
       console.error('删除精选特码历史记录失败', e);
       Toast.show('删除失败');
+    }
+  },
+
+  /**
+   * 复制精选特码历史记录的号码到剪贴板
+   * @param {number} idx - 记录索引
+   * @param {string} numbersText - 号码文本（已拼接好的字符串）
+   * @param {Event} evt - 点击事件
+   */
+  copySpecialHistory: async (idx, numbersText, evt) => {
+    try {
+      // 阻止事件冒泡
+      evt.stopPropagation();
+      
+      if (!numbersText || numbersText.trim() === '') {
+        Toast.show('暂无号码可复制');
+        return;
+      }
+      
+      // 使用现代 Clipboard API 复制文本
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(numbersText);
+      } else {
+        // 降级方案：使用传统的 execCommand
+        const textArea = document.createElement('textarea');
+        textArea.value = numbersText;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (!successful) {
+          throw new Error('复制失败');
+        }
+      }
+      
+      // 显示成功提示
+      Toast.show(`已复制：${numbersText}`);
+    } catch (e) {
+      console.error('复制号码失败', e);
+      Toast.show('复制失败，请手动复制');
     }
   },
 
@@ -8081,15 +8313,19 @@ const Business = {
         
         html += `
           <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
-            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'selectedZodiac')" 
-            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'selectedZodiac')" 
-            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'selectedZodiac', (item) => '${zodiacNames.replace(/'/g, "\\'")}')" 
+            ontouchstart="Utils.SwipeDeleteHandlerSelectedZodiac.handleTouchStart(event, ${globalIdx}, 'selectedZodiac')" 
+            ontouchmove="Utils.SwipeDeleteHandlerSelectedZodiac.handleTouchMove(event, ${globalIdx}, 'selectedZodiac')" 
+            ontouchend="Utils.SwipeDeleteHandlerSelectedZodiac.handleTouchEnd(event, ${globalIdx}, 'selectedZodiac')" 
             onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)">
-            <div class="special-history-content" style="transition:transform 0.3s ease;pointer-events:none;">
+            <div class="special-history-delete" onclick="Business.deleteSelectedZodiacHistoryItem(${globalIdx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
+              <span style="font-size:14px;">删除</span>
+            </div>
+            <div class="special-history-content" style="transition:transform 0.3s ease;position:relative;z-index:5;background:var(--card);">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="color:var(--sub-text);font-size:11px;">
                   <span>${titleText || '-'} · ${item.time}</span>
                 </div>
+                <button class="btn-mini" onclick="Business.copySelectedZodiacHistoryItem(${globalIdx}, '${zodiacNames.replace(/'/g, "\\'")}', event)" style="margin-left:8px;">复制</button>
               </div>
               <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
                 <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${zodiacTags}</div>
@@ -8160,10 +8396,10 @@ const Business = {
    * @param {number} idx - 记录索引
    * @param {string} zodiacNames - 生肖名称（已拼接好的字符串）
    */
-  copySelectedZodiacHistoryItem: async (idx, zodiacNames) => {
+  copySelectedZodiacHistoryItem: async (idx, zodiacNames, evt) => {
     try {
       // 阻止事件冒泡
-      event.stopPropagation();
+      evt.stopPropagation();
       
       if (!zodiacNames || zodiacNames.trim() === '') {
         Toast.show('暂无生肖可复制');
