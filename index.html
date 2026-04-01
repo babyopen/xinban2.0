@@ -962,6 +962,8 @@ const Utils = {
     }
   },
 
+
+
   /**
    * 防抖函数（优化高频点击）
    * @param {Function} fn - 要执行的函数
@@ -975,6 +977,8 @@ const Utils = {
       timer = setTimeout(() => fn.apply(this, args), delay);
     }
   },
+
+
 
   /**
    * 深拷贝对象
@@ -4723,7 +4727,6 @@ const Business = {
     
     // 安全检查：如果没有历史数据，返回空数组
     if(!historyData || historyData.length === 0) {
-      console.log('[冷号模式] 无历史数据，返回空数组');
       return [];
     }
     
@@ -5446,23 +5449,7 @@ const Business = {
    */
   showZodiacDetail: (zodiac) => {
     const data = Business.calcZodiacAnalysis();
-    
-    // 即使没有历史数据，也显示基本信息
-    let score = 0;
-    let miss = 0;
-    let count = 0;
-    let total = 0;
-    let rate = '0%';
-    let details = { cold: 0, hot: 0, shape: 0, interval: 0 };
-    
-    if(data) {
-      details = data.zodiacDetails[zodiac];
-      score = data.zodiacScores[zodiac] || 0;
-      miss = data.zodMiss[zodiac] || 0;
-      count = data.zodCount[zodiac] || 0;
-      total = data.total || 0;
-      rate = total > 0 ? ((count / total) * 100).toFixed(1) + '%' : '0%';
-    }
+
 
     // 创建弹窗
     const modal = document.createElement('div');
@@ -5472,40 +5459,8 @@ const Business = {
     let detailHtml = `
       <div class="modal-content">
         <div class="modal-header">
-          <h3 class="modal-title">${zodiac} 详情分析</h3>
+          <h3 class="modal-title">${zodiac}</h3>
           <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">×</button>
-        </div>
-        
-        <div class="modal-info">
-          <div class="modal-info-row">
-            <span class="modal-info-label">综合评分：</span>${score}分
-          </div>
-          <div class="modal-info-row">
-            <span class="modal-info-label">出现次数：</span>${count}次 (${rate})
-          </div>
-          <div class="modal-info-row">
-            <span class="modal-info-label">遗漏期数：</span>${miss}期
-          </div>
-        </div>
-        
-        <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">评分详情</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;">
-          <div class="score-glass-card">
-            <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">冷号状态</div>
-            <div style="font-size:18px;font-weight:700;color:${details.cold > 0 ? '#FF3B30' : 'var(--primary)'}">${details.cold}分</div>
-          </div>
-          <div class="score-glass-card">
-            <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">热号状态</div>
-            <div style="font-size:18px;font-weight:700;color:${details.hot > 0 ? '#34C759' : 'var(--primary)'}">${details.hot}分</div>
-          </div>
-          <div class="score-glass-card">
-            <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">形态匹配</div>
-            <div style="font-size:18px;font-weight:700;color:${details.shape > 0 ? '#FF9500' : 'var(--primary)'}">${details.shape}分</div>
-          </div>
-          <div class="score-glass-card">
-            <div style="font-size:12px;color:var(--sub-text);margin-bottom:4px;">间隔匹配</div>
-            <div style="font-size:18px;font-weight:700;color:${details.interval > 0 ? '#5856D6' : 'var(--primary)'}">${details.interval}分</div>
-          </div>
         </div>
         
         <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">关联号码</div>
@@ -5521,6 +5476,10 @@ const Business = {
               </div>
             `;
           }).join('')}
+        </div>
+        
+        <div style="margin-top:20px;display:flex;justify-content:center;">
+          <button class="btn-line" onclick="Business.copyZodiacNumbersByZodiac('${zodiac.replace(/'/g, "\\'")}')">复制号码</button>
         </div>
         
         ${!data ? '<div style="margin-top:16px; padding:16px; background:var(--bg-secondary); border-radius:12px; color:var(--text);"><strong>提示：</strong>历史数据未加载，显示的是默认信息。请切换到分析页面加载历史数据后查看详细分析。</div>' : ''}
@@ -6077,7 +6036,7 @@ const Business = {
           // 比对成功的生肖标签底色变蓝色
           const isMatchZodiac = actualZodiac && p.zodiac === actualZodiac;
           const tagClass = isMatchZodiac ? 'history-tag hit' : 'history-tag';
-          return `<span class="${tagClass}">${p.zodiac}</span>`;
+          return `<span class="${tagClass}" onclick="Business.showPredictionHistoryDetail(${idx}, event)" style="cursor:pointer;">${p.zodiac}</span>`;
         }).join('');
         
         let titleText = '';
@@ -6095,11 +6054,7 @@ const Business = {
         const predictionText = item.predictions.map(p => p.zodiac).join(' ');
         
         html += `
-          <div class="special-history-item" data-index="${idx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
-            ontouchstart="Utils.SwipeDeleteHandlerPrediction.handleTouchStart(event, ${idx}, 'predictionHistory')" 
-            ontouchmove="Utils.SwipeDeleteHandlerPrediction.handleTouchMove(event, ${idx}, 'predictionHistory')" 
-            ontouchend="Utils.SwipeDeleteHandlerPrediction.handleTouchEnd(event, ${idx}, 'predictionHistory')"
-            onclick="Business.showPredictionHistoryDetail(${idx}, event)">
+          <div class="special-history-item" data-index="${idx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;">
             <div class="special-history-delete" onclick="Business.deleteZodiacPredictionHistoryItem(${idx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
               <span style="font-size:14px;">删除</span>
             </div>
@@ -6108,11 +6063,10 @@ const Business = {
                 <div style="color:var(--sub-text);font-size:11px;">
                   <span>${titleText}</span>
                 </div>
-                <button class="btn-mini" onclick="Business.copyZodiacPredictionHistory(${idx}, '${predictionText.replace(/'/g, "\\'")}', event)" style="margin-left:8px;">复制</button>
               </div>
               <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
                 <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${predictions}</div>
-                ${actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${actualZodiac}</span>` : ''}
+                ${actualZodiac ? `<span class="${actualZodiacClass}" onclick="Business.showPredictionHistoryDetail(${idx}, event)" style="flex-shrink:0;cursor:pointer;">${actualZodiac}</span>` : ''}
               </div>
             </div>
           </div>
@@ -6749,6 +6703,28 @@ const Business = {
   copyZodiacNumbers: () => {
     const numbers = Business.extractNumbersFromBalls('zodiacFinalNumContent', '暂无精选特码可复制');
     if(numbers) Business.copyToClipboard(numbers);
+  },
+
+  /**
+   * 复制生肖对应的号码列表
+   * @param {string} zodiac - 生肖名称
+   */
+  copyZodiacNumbersByZodiac: (zodiac) => {
+    try {
+      const numbers = Business.getZodiacNumbers(zodiac);
+      if(!numbers || numbers.length === 0) {
+        Toast.show('该生肖无对应号码');
+        return;
+      }
+      
+      // 格式化号码：两位数，空格分隔
+      const numbersText = numbers.map(num => String(num).padStart(2, '0')).join(' ');
+      Business.copyToClipboard(numbersText);
+      Toast.show(`已复制 ${zodiac} 生肖 ${numbers.length} 个号码`);
+    } catch(e) {
+      console.error('复制生肖号码失败', e);
+      Toast.show('复制失败');
+    }
   },
 
   /**
@@ -7418,18 +7394,14 @@ const Business = {
           const isHit = item.hitCount > 0;
           const drawClass = isHit ? 'history-tag hit' : 'history-tag miss';
           
-          drawNumberHtml = `<span class="${drawClass}" style="margin-left:auto;">${String(item.drawResult).padStart(2, '0')}</span>`;
+          drawNumberHtml = `<span class="${drawClass}" onclick="Business.showSpecialHistoryDetail(${globalIdx}, event)" style="margin-left:auto;cursor:pointer;">${String(item.drawResult).padStart(2, '0')}</span>`;
         }
         
         // 准备复制文本（号码列表）
         const numbersText = item.numbers.map(n => String(n).padStart(2, '0')).join(' ');
         
         html += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
-            ontouchstart="Utils.SwipeDeleteHandlerSpecial.handleTouchStart(event, ${globalIdx}, 'specialHistory')" 
-            ontouchmove="Utils.SwipeDeleteHandlerSpecial.handleTouchMove(event, ${globalIdx}, 'specialHistory')" 
-            ontouchend="Utils.SwipeDeleteHandlerSpecial.handleTouchEnd(event, ${globalIdx}, 'specialHistory')"
-            onclick="Business.showSpecialHistoryDetail(${globalIdx}, event)">
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;">
             <div class="special-history-delete" onclick="Business.deleteSpecialHistoryItem(${globalIdx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
               <span style="font-size:14px;">删除</span>
             </div>
@@ -7438,7 +7410,6 @@ const Business = {
                 <div style="color:var(--sub-text);font-size:11px;">
                   <span>${titleText}</span>
                 </div>
-                <button class="btn-mini" onclick="Business.copySpecialHistory(${globalIdx}, '${numbersText}', event)" style="margin-left:8px;">复制</button>
               </div>
               <div style="display:flex;align-items:flex-start;gap:8px;">
                 <div style="flex:1;min-width:0;">
@@ -7615,6 +7586,7 @@ const Business = {
       }
       
       const item = filteredHistory[filteredIdx];
+      const numbersText = item.numbers.map(num => String(num).padStart(2, '0')).join(' ');
       
       // 生成号码详细信息
       let numbersDetailHtml = '';
@@ -7628,17 +7600,17 @@ const Business = {
         if(isHit) {
           // 命中的球号显示卡片样式
           numbersDetailHtml += `
-            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px;background:var(--bg-secondary);border-radius:12px;border:2px solid var(--success);">
+            <div class="modal-detail-card hit">
               <div class="ball ${colorClass}">${String(num).padStart(2, '0')}${hitMark}</div>
-              <div style="font-size:11px;color:var(--sub-text);text-align:center;font-weight:500;">${attrs.zodiac}/${attrs.element}</div>
+              <div class="modal-detail-ball-info">${attrs.zodiac}/${attrs.element}</div>
             </div>
           `;
         } else {
           // 普通球号直接显示
           numbersDetailHtml += `
-            <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <div class="modal-detail-ball-container">
               <div class="ball ${colorClass}">${String(num).padStart(2, '0')}</div>
-              <div style="font-size:11px;color:var(--sub-text);text-align:center;font-weight:500;">${attrs.zodiac}/${attrs.element}</div>
+              <div class="modal-detail-ball-info">${attrs.zodiac}/${attrs.element}</div>
             </div>
           `;
         }
@@ -7653,17 +7625,15 @@ const Business = {
         const colorClass = color === '红' ? 'red' : color === '蓝' ? 'blue' : 'green';
         
         drawResultHtml = `
-          <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
-            <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">开奖号码</div>
-            <div style="display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg-secondary);border-radius:12px;">
-              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-                <div class="ball ${colorClass}" style="width:44px;height:44px;font-size:18px;">${String(item.drawResult).padStart(2, '0')}</div>
-                <div style="font-size:12px;color:var(--sub-text);">${attrs.zodiac}/${attrs.element}</div>
+          <div class="modal-detail-section">
+            <div class="modal-detail-section-title">开奖号码</div>
+            <div class="modal-detail-result-card">
+              <div class="modal-detail-result-main">
+                <div class="ball ${colorClass} modal-detail-result-ball">${String(item.drawResult).padStart(2, '0')}</div>
+                <div class="modal-detail-result-info">${attrs.zodiac}/${attrs.element}</div>
               </div>
-              <div style="flex:1;">
-                <div style="font-size:14px;color:${isHit ? 'var(--success)' : 'var(--danger)'};">
-                  ${isHit ? `🎉 命中 ${item.hitCount} 个号码` : '未命中'}
-                </div>
+              <div class="modal-detail-result-status ${isHit ? 'modal-detail-status-success' : 'modal-detail-status-danger'}">
+                ${isHit ? `🎉 命中 ${item.hitCount} 个号码` : '未命中'}
               </div>
             </div>
           </div>
@@ -7700,12 +7670,16 @@ const Business = {
             </div>
           </div>
           
-          <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">精选号码</div>
-          <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
+          <div class="modal-detail-section-title">精选号码</div>
+          <div class="modal-detail-grid">
             ${numbersDetailHtml}
           </div>
           
           ${drawResultHtml}
+          
+          <div style="margin-top:1.25rem;">
+            <button class="btn-line" onclick="Business.copySpecialHistory(${filteredIdx}, '${numbersText.replace(/'/g, "\\'")}', event)">复制号码</button>
+          </div>
         </div>
       `;
       modal.addEventListener('click', (e) => {
@@ -8303,7 +8277,7 @@ const Business = {
         const zodiacTags = item.selectedZodiacs.map(z => {
           const isMatchZodiac = item.actualZodiac && z.zodiac === item.actualZodiac;
           const tagClass = isMatchZodiac ? 'history-tag hit' : 'history-tag';
-          return `<span class="${tagClass}">${z.zodiac}</span>`;
+          return `<span class="${tagClass}" onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)" style="cursor:pointer;">${z.zodiac}</span>`;
         }).join('');
         
         const actualZodiacClass = item.isHit ? 'history-tag hit' : 'history-tag miss';
@@ -8312,11 +8286,7 @@ const Business = {
         const zodiacNames = item.selectedZodiacs.map(z => z.zodiac).join(' ');
         
         html += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
-            ontouchstart="Utils.SwipeDeleteHandlerSelectedZodiac.handleTouchStart(event, ${globalIdx}, 'selectedZodiac')" 
-            ontouchmove="Utils.SwipeDeleteHandlerSelectedZodiac.handleTouchMove(event, ${globalIdx}, 'selectedZodiac')" 
-            ontouchend="Utils.SwipeDeleteHandlerSelectedZodiac.handleTouchEnd(event, ${globalIdx}, 'selectedZodiac')" 
-            onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)">
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;">
             <div class="special-history-delete" onclick="Business.deleteSelectedZodiacHistoryItem(${globalIdx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
               <span style="font-size:14px;">删除</span>
             </div>
@@ -8325,11 +8295,10 @@ const Business = {
                 <div style="color:var(--sub-text);font-size:11px;">
                   <span>${titleText || '-'} · ${item.time}</span>
                 </div>
-                <button class="btn-mini" onclick="Business.copySelectedZodiacHistoryItem(${globalIdx}, '${zodiacNames.replace(/'/g, "\\'")}', event)" style="margin-left:8px;">复制</button>
               </div>
               <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
                 <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${zodiacTags}</div>
-                ${item.actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${item.actualZodiac}</span>` : ''}
+                ${item.actualZodiac ? `<span class="${actualZodiacClass}" onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)" style="flex-shrink:0;cursor:pointer;">${item.actualZodiac}</span>` : ''}
               </div>
             </div>
           </div>
@@ -8461,21 +8430,21 @@ const Business = {
       }
       
       const item = history[idx];
+      const zodiacNames = item.selectedZodiacs.map(z => z.zodiac).join(' ');
       
       let zodiacsDetailHtml = '';
       item.selectedZodiacs.forEach(z => {
         const periodTags = z.periods.map(period => {
           const periodMap = { 10: '1', 20: '2', 30: '3' };
-          return `<span class="selected-zodiac-period-tag">${periodMap[period] || period}</span>`;
+          return `<span class="modal-detail-period-tag">${periodMap[period] || period}</span>`;
         }).join('');
         
         const isMatch = item.actualZodiac && z.zodiac === item.actualZodiac;
-        const hitClass = isMatch ? 'background:var(--bg-secondary);border:2px solid var(--success);' : '';
         
         zodiacsDetailHtml += `
-          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px;background:var(--bg-secondary);border-radius:12px;min-width:70px;min-height:70px;${hitClass}">
-            <div style="font-size:18px;font-weight:600;">${z.zodiac}</div>
-            <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;">${periodTags}</div>
+          <div class="modal-detail-card ${isMatch ? 'hit' : ''}">
+            <div class="modal-detail-card-title">${z.zodiac}</div>
+            <div class="modal-detail-period-tags">${periodTags}</div>
           </div>
         `;
       });
@@ -8483,16 +8452,14 @@ const Business = {
       let drawResultHtml = '';
       if(item.actualZodiac) {
         drawResultHtml = `
-          <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
-            <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">开奖生肖</div>
-            <div style="display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg-secondary);border-radius:12px;">
-              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-                <div style="font-size:24px;font-weight:600;">${item.actualZodiac}</div>
+          <div class="modal-detail-section">
+            <div class="modal-detail-section-title">开奖生肖</div>
+            <div class="modal-detail-result-card">
+              <div class="modal-detail-result-main">
+                <div class="modal-detail-result-value">${item.actualZodiac}</div>
               </div>
-              <div style="flex:1;">
-                <div style="font-size:14px;color:${item.isHit ? 'var(--success)' : 'var(--danger)'};">
-                  ${item.isHit ? '🎉 命中' : '未命中'}
-                </div>
+              <div class="modal-detail-result-status ${item.isHit ? 'modal-detail-status-success' : 'modal-detail-status-danger'}">
+                ${item.isHit ? '🎉 命中' : '未命中'}
               </div>
             </div>
           </div>
@@ -8521,12 +8488,16 @@ const Business = {
             </div>
           </div>
           
-          <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">精选生肖</div>
-          <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
+          <div class="modal-detail-section-title">精选生肖</div>
+          <div class="modal-detail-grid">
             ${zodiacsDetailHtml}
           </div>
           
           ${drawResultHtml}
+          
+          <div style="margin-top:1.25rem;">
+            <button class="btn-line" onclick="Business.copySelectedZodiacHistoryItem(${idx}, '${zodiacNames.replace(/'/g, "\\'")}', event)">复制生肖</button>
+          </div>
         </div>
       `;
       modal.addEventListener('click', (e) => {
@@ -8536,6 +8507,129 @@ const Business = {
       document.body.appendChild(modal);
     } catch(e) {
       console.error('显示精选生肖历史详情失败', e);
+      Toast.show('显示详情失败');
+    }
+  },
+
+  /**
+   * 显示预测历史详情弹窗
+   */
+  showPredictionHistoryDetail: (idx, e) => {
+    try {
+      e.stopPropagation();
+      
+      // 尝试从事件目标获取点击的生肖名称
+      const target = e.target;
+      let zodiacElement = target;
+      
+      // 如果点击的是文本节点，获取父元素
+      if(zodiacElement.nodeType === Node.TEXT_NODE) {
+        zodiacElement = zodiacElement.parentElement;
+      }
+      
+      // 检查是否是history-tag元素或其子元素
+      if(zodiacElement && !zodiacElement.classList.contains('history-tag')) {
+        // 尝试查找父元素中的history-tag
+        const parentTag = zodiacElement.closest('.history-tag');
+        if(parentTag) {
+          zodiacElement = parentTag;
+        }
+      }
+      
+      const zodiacName = zodiacElement && zodiacElement.textContent ? zodiacElement.textContent.trim() : null;
+      
+      // 如果有生肖名称，显示该生肖的详细信息
+      if(zodiacName && zodiacName.length <= 2 && zodiacElement && zodiacElement.classList.contains('history-tag')) {
+        Business.showZodiacDetail(zodiacName);
+        return;
+      }
+      
+      // 否则显示整个预测历史详情
+      const state = StateManager._state;
+      const history = state.zodiacPredictionHistory || [];
+      
+      if(history.length === 0) {
+        Toast.show('暂无预测历史记录');
+        return;
+      }
+      
+      if(idx < 0 || idx >= history.length) {
+        Toast.show('记录不存在');
+        return;
+      }
+      
+      const item = history[idx];
+      const predictionText = item.predictions.map(p => p.zodiac).join(' ');
+      
+      let predictionsDetailHtml = '';
+      item.predictions.forEach(p => {
+        const isMatch = item.actualZodiac && p.zodiac === item.actualZodiac;
+        
+        predictionsDetailHtml += `
+          <div class="modal-detail-card ${isMatch ? 'hit' : ''}">
+            <div class="modal-detail-card-title">${p.zodiac}</div>
+          </div>
+        `;
+      });
+      
+      let drawResultHtml = '';
+      if(item.actualZodiac) {
+        drawResultHtml = `
+          <div class="modal-detail-section">
+            <div class="modal-detail-section-title">开奖生肖</div>
+            <div class="modal-detail-result-card">
+              <div class="modal-detail-result-main">
+                <div class="modal-detail-result-value">${item.actualZodiac}</div>
+              </div>
+              <div class="modal-detail-result-status ${item.isHit ? 'modal-detail-status-success' : 'modal-detail-status-danger'}">
+                ${item.isHit ? '🎉 命中' : '未命中'}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      let titleText = '';
+      if(item.expect) {
+        titleText = `第${item.expect}期`;
+      }
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">预测历史详情</h3>
+            <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          
+          <div class="modal-info">
+            <div class="modal-info-row">
+              <span class="modal-info-label">期数：</span>
+              ${titleText || '-'} · ${item.time}
+            </div>
+          </div>
+          
+          <div class="modal-detail-section-title">预测生肖</div>
+          <div class="modal-detail-grid">
+            ${predictionsDetailHtml}
+          </div>
+          
+          ${drawResultHtml}
+          
+          <div style="margin-top:1.25rem;">
+            <button class="btn-line" onclick="Business.copyZodiacPredictionHistory(${idx}, '${predictionText.replace(/'/g, "\\'")}', event)">复制生肖</button>
+          </div>
+        </div>
+      `;
+      modal.addEventListener('click', (e) => {
+        if(e.target === modal) modal.remove();
+      });
+      
+      document.body.appendChild(modal);
+    } catch(e) {
+      console.error('显示预测历史详情失败', e);
       Toast.show('显示详情失败');
     }
   },
@@ -8731,7 +8825,7 @@ const Business = {
         let drawNumberHtml = '';
         if(item.actualSpecial !== null) {
           const drawClass = item.isHit ? 'history-tag hit' : 'history-tag miss';
-          drawNumberHtml = `<span class="${drawClass}" style="margin-left:auto;">${String(item.actualSpecial).padStart(2, '0')}</span>`;
+          drawNumberHtml = `<span class="${drawClass}" onclick="Business.showHotNumbersHistoryDetail(${globalIdx}, event)" style="margin-left:auto;cursor:pointer;">${String(item.actualSpecial).padStart(2, '0')}</span>`;
         }
         
         // 准备复制文本（号码列表）
@@ -8741,10 +8835,7 @@ const Business = {
         }).join(' ');
         
         historyHtml += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
-            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'hotNumbersHistory')" 
-            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'hotNumbersHistory')" 
-            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'hotNumbersHistory', (item) => '${numbersText}')">
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;">
             <div class="special-history-delete" onclick="Business.deleteHotNumbersHistoryItem(${globalIdx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
               <span style="font-size:14px;">删除</span>
             </div>
