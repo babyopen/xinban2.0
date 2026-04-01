@@ -397,6 +397,21 @@
         <div id="specialHistoryList">
           <div class="empty-tip">暂无精选特码历史</div>
         </div>
+        <div id="specialHistoryPagination" class="pagination"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h2>特码热门TOP5历史</h2>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <button class="btn-mini red" data-action="clearHotNumbersHistory" style="font-size:11px;">清空</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="hotNumbersHistoryList">
+          <div class="empty-tip">暂无特码热门TOP5历史</div>
+        </div>
+        <div id="hotNumbersHistoryPagination" class="pagination"></div>
       </div>
     </div>
   </div>
@@ -1469,10 +1484,10 @@ const Utils = {
         
         if (deltaX < 0 && deltaX > -150) {
           content.style.transform = `translateX(${deltaX}px)`;
-          deleteBtn.style.transform = `translateX(${100 + deltaX / -150 * 100}%)`;
+          if(deleteBtn) deleteBtn.style.transform = `translateX(${100 + deltaX / -150 * 100}%)`;
         } else if (deltaX <= -150) {
           content.style.transform = 'translateX(-150px)';
-          deleteBtn.style.transform = 'translateX(0)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
         }
       },
       onSwipeEnd: (e, key, deltaX, deltaTime) => {
@@ -1482,10 +1497,10 @@ const Utils = {
         
         if (deltaX <= -75) {
           content.style.transform = 'translateX(-150px)';
-          deleteBtn.style.transform = 'translateX(0)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(0)';
         } else {
           content.style.transform = 'translateX(0)';
-          deleteBtn.style.transform = 'translateX(100%)';
+          if(deleteBtn) deleteBtn.style.transform = 'translateX(100%)';
         }
       }
     });
@@ -1781,7 +1796,12 @@ const StateManager = {
     selectedZodiacHistory: [],
     selectedZodiacHistoryExpanded: false,
     selectedZodiacHistoryPage: 1,
-    selectedZodiacHistoryPageSize: 50
+    selectedZodiacHistoryPageSize: 50,
+    // 特码热门top5历史状态
+    hotNumbersHistory: [],
+    hotNumbersHistoryExpanded: false,
+    hotNumbersHistoryPage: 1,
+    hotNumbersHistoryPageSize: 50
   },
 
   /**
@@ -1897,7 +1917,8 @@ const Storage = {
     HISTORY_CACHE: 'historyCache',
     HISTORY_CACHE_TIME: 'historyCacheTime',
     SPECIAL_HISTORY: 'specialHistory',
-    SELECTED_ZODIAC_HISTORY: 'selectedZodiacHistory'
+    SELECTED_ZODIAC_HISTORY: 'selectedZodiacHistory',
+    HOT_NUMBERS_HISTORY: 'hotNumbersHistory'
   }),
 
   /**
@@ -1929,6 +1950,18 @@ const Storage = {
    * @readonly
    */
   SELECTED_ZODIAC_HISTORY_MAX_COUNT: 350,
+
+  /**
+   * 特码热门top5历史缓存有效期（毫秒）- 30天
+   * @readonly
+   */
+  HOT_NUMBERS_HISTORY_DURATION: 30 * 24 * 60 * 60 * 1000,
+
+  /**
+   * 特码热门top5历史最大记录数
+   * @readonly
+   */
+  HOT_NUMBERS_HISTORY_MAX_COUNT: 350,
 
   /**
    * 内存兜底存储（隐私模式下localStorage不可用时使用）
@@ -2170,6 +2203,48 @@ const Storage = {
    */
   clearSelectedZodiacHistory: () => {
     Storage.remove(Storage.KEYS.SELECTED_ZODIAC_HISTORY);
+  },
+
+  /**
+   * 保存特码热门top5历史
+   * @param {Array} history - 特码热门top5历史记录
+   */
+  saveHotNumbersHistory: (history) => {
+    Storage.set(Storage.KEYS.HOT_NUMBERS_HISTORY, history);
+  },
+
+  /**
+   * 加载特码热门top5历史缓存
+   * @returns {Array} 过滤后的历史记录（只保留30天内的）
+   */
+  loadHotNumbersHistory: () => {
+    const data = Storage.get(Storage.KEYS.HOT_NUMBERS_HISTORY, null);
+    if(!data || !Array.isArray(data)) {
+      return [];
+    }
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - Storage.HOT_NUMBERS_HISTORY_DURATION;
+
+    // 过滤掉超过30天的记录
+    const filteredHistory = data.filter(item => {
+      const itemTime = item.timestamp || now;
+      return itemTime >= thirtyDaysAgo;
+    });
+
+    // 如果有过期的记录被过滤掉，更新缓存
+    if(filteredHistory.length < data.length) {
+      Storage.saveHotNumbersHistory(filteredHistory);
+    }
+
+    return filteredHistory;
+  },
+
+  /**
+   * 清除特码热门top5历史缓存
+   */
+  clearHotNumbersHistory: () => {
+    Storage.remove(Storage.KEYS.HOT_NUMBERS_HISTORY);
   }
 };
 
@@ -3054,12 +3129,16 @@ const Business = {
     
     // 切换到记录页面时重新渲染精选特码历史和精选生肖历史
     if(index === 2) {
-      try {
-        Business.renderSpecialHistory();
-        Business.renderSelectedZodiacHistory();
-      } catch(e) {
-        console.error('渲染记录页面内容失败', e);
-      }
+      // 使用 requestAnimationFrame 确保在DOM更新后再渲染
+      requestAnimationFrame(() => {
+        try {
+          Business.renderSpecialHistory();
+          Business.renderSelectedZodiacHistory();
+        Business.renderHotNumbersHistory();
+        } catch(e) {
+          console.error('渲染记录页面内容失败', e);
+        }
+      });
     }
     
     // 根据页面切换快捷导航菜单内容
@@ -3746,11 +3825,23 @@ const Business = {
     if(hotWrap) hotWrap.style.display = 'block';
     if(emptyTip) emptyTip.style.display = 'none';
 
-    // 构建热门特码的球号显示
+    // 建立完整的号码-生肖映射（用于多维度筛选）
+    const fullNumZodiacMap = new Map();
+    for(let num = 1; num <= 49; num++) {
+      const zod = DataQuery._getZodiacByNum(num);
+      if(zod) fullNumZodiacMap.set(num, zod);
+    }
+
+    // 构建热门特码的球号显示（使用多维度筛选算法）
     const buildHotNumberBalls = (hotNumStr) => {
-      const nums = hotNumStr.split(' ').map(num => Number(num));
+      // 使用多维度筛选算法获取热门号码
+      let hotNums = Business.getHotNumbers(data, 5, fullNumZodiacMap);
+      
+      // 按数字大小排序
+      hotNums.sort((a, b) => a - b);
+      
       let ballHtml = '<div class="ball-group">';
-      nums.forEach(num => {
+      hotNums.forEach(num => {
         const color = Business.getColor(num);
         const zodiac = DataQuery._getZodiacByNum(num);
         const element = Business.getWuxing(num);
@@ -4352,14 +4443,10 @@ const Business = {
     // 根据模式选择不同的筛选策略
     if(mode === 'cold') {
       // ❄️ 冷号反弹模式
-      console.log('[冷号模式] 开始计算...');
       finalNums = Business.getColdReboundNumbers(data, targetCount, fullNumZodiacMap);
-      console.log('[冷号模式] 结果:', finalNums);
     } else if(mode === 'auto') {
       // 🤖 自动模式：智能判断使用热号还是冷号模式
-      console.log('[自动模式] 开始决策...');
       const modeDecision = Business.decideAutoMode(data);
-      console.log('[自动模式] 决策结果:', modeDecision);
       if(modeDecision === 'cold') {
         finalNums = Business.getColdReboundNumbers(data, targetCount, fullNumZodiacMap);
       } else {
@@ -4418,19 +4505,66 @@ const Business = {
    * @returns {Array} 号码数组
    */
   getHotNumbers: (data, targetCount, fullNumZodiacMap) => {
-    // 锁定核心生肖池：使用生肖预测高分的前6个生肖
-    const coreZodiacs = data.sortedZodiacs 
-      ? data.sortedZodiacs.slice(0, 6).map(i => i[0])
-      : data.topZod.slice(0, 6).map(i => i[0]);
+    // 适配两种数据结构：精选特码的完整数据结构 和 综合分析的简化数据结构
+    
+    // 锁定核心生肖池：优先使用精选生肖，若没有则使用预测高分的前6个生肖
+    let coreZodiacs = [];
+    
+    // 首先尝试使用精选生肖
+    const selectedZodiacsMap = Business.getSelectedZodiacs();
+    if(selectedZodiacsMap && selectedZodiacsMap.size > 0) {
+      coreZodiacs = Array.from(selectedZodiacsMap.keys());
+    } 
+    // 如果没有精选生肖，使用原来的逻辑
+    else if(data.sortedZodiacs && data.sortedZodiacs.length > 0) {
+      // 精选特码的数据结构
+      coreZodiacs = data.sortedZodiacs.slice(0, 6).map(i => i[0]);
+    } else if(data.topZod && Array.isArray(data.topZod)) {
+      // 兼容结构
+      coreZodiacs = data.topZod.slice(0, 6).map(i => i[0]);
+    } else if(data.zodiac) {
+      // 综合分析的数据结构：从zodiac对象计算前6个热门生肖
+      coreZodiacs = Object.entries(data.zodiac)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(i => i[0]);
+    }
 
     // 锁定热门尾数TOP6
-    const hotTails = data.topTail.slice(0, 6).map(i => i.t);
+    let hotTails = [];
+    if(data.topTail && Array.isArray(data.topTail) && data.topTail.length > 0) {
+      hotTails = data.topTail.slice(0, 6).map(i => i.t !== undefined ? i.t : parseInt(i[0]));
+    } else if(data.tail) {
+      // 从tail对象计算
+      hotTails = Object.entries(data.tail)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(i => parseInt(i[0]));
+    }
     
     // 锁定热门波色TOP2
-    const hotColors = data.topColor.slice(0, 2).map(i => i[0]);
+    let hotColors = [];
+    if(data.topColor && Array.isArray(data.topColor) && data.topColor.length > 0) {
+      hotColors = data.topColor.slice(0, 2).map(i => i[0]);
+    } else if(data.color) {
+      // 从color对象计算
+      hotColors = Object.entries(data.color)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(i => i[0]);
+    }
     
     // 锁定热门头数TOP3
-    const hotHeads = data.topHead.slice(0, 3).map(i => parseInt(i[0]));
+    let hotHeads = [];
+    if(data.topHead && Array.isArray(data.topHead) && data.topHead.length > 0) {
+      hotHeads = data.topHead.slice(0, 3).map(i => parseInt(i[0]));
+    } else if(data.head) {
+      // 从head对象计算
+      hotHeads = Object.entries(data.head)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(i => parseInt(i[0]));
+    }
 
     // 筛选候选号码（必须同时满足4个条件）
     const candidateNums = [];
@@ -4444,8 +4578,8 @@ const Business = {
          hotTails.includes(tail) && 
          hotColors.includes(colorName) && 
          hotHeads.includes(head)) {
-        const miss = data.zodMiss[zod] || 0;
-        const count = data.zodCount[zod] || 0;
+        const miss = data.zodMiss && data.zodMiss[zod] ? data.zodMiss[zod] : 0;
+        const count = data.zodCount && data.zodCount[zod] ? data.zodCount[zod] : 0;
         // 获取生肖预测分数作为额外权重
         const zodScore = data.zodiacScores && data.zodiacScores[zod] ? data.zodiacScores[zod] : 0;
         candidateNums.push({
@@ -4582,15 +4716,6 @@ const Business = {
     scoredCandidates.sort((a, b) => b.score - a.score);
     
     // 调试输出
-    console.log('[冷号模式] 冷号候选总数:', coldCandidates.length);
-    console.log('[冷号模式] 前10个高分冷号:', scoredCandidates.slice(0, 10).map(c => ({
-      num: c.num,
-      miss: c.miss,
-      score: c.score,
-      zod: c.zod,
-      tail: c.tail
-    })));
-    
     let finalNums = scoredCandidates.slice(0, targetCount).map(i => i.num);
     
     // 兜底机制：如果冷号候选不足，从遗漏期数最长的号码中补充
@@ -4602,7 +4727,6 @@ const Business = {
         .slice(0, remainingCount)
         .map(c => c.num);
       finalNums.push(...sortedByMiss);
-      console.log('[冷号模式] 从冷号候选补充:', sortedByMiss);
     }
     
     // 如果还是不足，从遗漏期数较长的号码中补充（兜底）
@@ -4620,13 +4744,11 @@ const Business = {
       // 取前N个
       const fillNums = remainingNums.slice(0, remainingCount).map(n => n.num);
       finalNums.push(...fillNums);
-      console.log('[冷号模式] 从遗漏号码补充:', fillNums);
     }
     
     // 按号码从小到大排序
     finalNums.sort((a, b) => a - b);
     
-    console.log('[冷号模式] 最终结果:', finalNums);
     return finalNums;
   },
 
@@ -4641,7 +4763,6 @@ const Business = {
     
     // 安全检查：如果没有历史数据，默认使用热号模式
     if(!historyData || historyData.length < 10) {
-      console.log('[自动模式] 历史数据不足，默认使用热号模式');
       return 'hot';
     }
     
@@ -5868,15 +5989,23 @@ const Business = {
         // 实际开奖生肖的标签类：命中变蓝，未命中变红
         const actualZodiacClass = isMatch ? 'history-tag hit' : 'history-tag miss';
         
+        // 准备复制文本
+        const predictionText = item.predictions.map(p => p.zodiac).join(' ');
+        
         html += `
-          <div style="padding:10px;border-bottom:1px solid var(--border);font-size:13px;background:var(--card);border-radius:8px;margin-bottom:8px;">
-            <div style="color:var(--sub-text);margin-bottom:8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;">
-              <span>${titleText}</span>
-              <span>${item.time}</span>
-            </div>
-            <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
-              <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${predictions}</div>
-              ${actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${actualZodiac}</span>` : ''}
+          <div class="special-history-item" data-index="${idx}" style="padding:10px;border-bottom:1px solid var(--border);font-size:13px;background:var(--card);border-radius:8px;margin-bottom:8px;position:relative;overflow:hidden;touch-action:pan-y;" 
+            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${idx}, 'predictionHistory')" 
+            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${idx}, 'predictionHistory')" 
+            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${idx}, 'predictionHistory', (item) => '${predictionText.replace(/'/g, "\\'")}')">
+            <div class="special-history-content" style="transition:transform 0.3s ease;pointer-events:none;">
+              <div style="color:var(--sub-text);margin-bottom:8px;font-size:11px;display:flex;justify-content:space-between;align-items:center;">
+                <span>${titleText}</span>
+                <span>${item.time}</span>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${predictions}</div>
+                ${actualZodiac ? `<span class="${actualZodiacClass}" style="flex-shrink:0;">${actualZodiac}</span>` : ''}
+              </div>
             </div>
           </div>
         `;
@@ -7115,7 +7244,7 @@ const Business = {
         const numbersText = item.numbers.map(n => String(n).padStart(2, '0')).join(' ');
         
         html += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;" 
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
             ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'specialHistory')" 
             ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'specialHistory')" 
             ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'specialHistory', (item) => '${numbersText}')">
@@ -7951,12 +8080,12 @@ const Business = {
         const zodiacNames = item.selectedZodiacs.map(z => z.zodiac).join(' ');
         
         html += `
-          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;cursor:pointer;" 
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
             ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'selectedZodiac')" 
             ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'selectedZodiac')" 
             ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'selectedZodiac', (item) => '${zodiacNames.replace(/'/g, "\\'")}')" 
             onclick="Business.showSelectedZodiacDetail(${globalIdx}, event)">
-            <div class="special-history-content" style="transition:transform 0.3s ease;">
+            <div class="special-history-content" style="transition:transform 0.3s ease;pointer-events:none;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="color:var(--sub-text);font-size:11px;">
                   <span>${titleText || '-'} · ${item.time}</span>
@@ -8185,6 +8314,430 @@ const Business = {
       Business.renderSelectedZodiacHistory();
       Toast.show('精选生肖历史已清空');
     }
+  },
+
+  /**
+   * 后台静默保存特码热门top5
+   */
+  silentSaveHotNumbers: () => {
+    try {
+      const state = StateManager._state;
+      const historyData = state.analysis.historyData;
+      
+      if(!historyData || historyData.length < 2) {
+        return;
+      }
+      
+      // 获取当前最新的开奖期号
+      let latestExpect = null;
+      let predictExpect = null;
+      if(historyData.length > 0) {
+        latestExpect = historyData[0].expect;
+        predictExpect = String(Number(latestExpect) + 1);
+      }
+      
+      // 获取现有历史记录
+      let currentHistory = [...state.hotNumbersHistory];
+      
+      // 检查是否已存在相同记录（同一预测期）
+      const exists = currentHistory.some(item => item.expect === predictExpect);
+      
+      if(exists) {
+        return; // 已存在则跳过
+      }
+      
+      // 获取特码热门top5数据
+      const data = Business.calcFullAnalysis();
+      if(!data) return;
+      
+      // 建立完整的号码-生肖映射（用于多维度筛选）
+      const fullNumZodiacMap = new Map();
+      for(let num = 1; num <= 49; num++) {
+        const zod = DataQuery._getZodiacByNum(num);
+        if(zod) fullNumZodiacMap.set(num, zod);
+      }
+      
+      // 使用多维度筛选算法获取热门号码
+      let hotNums = Business.getHotNumbers(data, 5, fullNumZodiacMap);
+      
+      // 按数字大小排序
+      hotNums.sort((a, b) => a - b);
+      
+      if(hotNums.length === 0) {
+        return;
+      }
+      
+      // 转换为对象格式
+      const hotNumbers = hotNums.map(num => {
+        const color = Business.getColor(num);
+        const zodiac = DataQuery._getZodiacByNum(num);
+        const element = Business.getWuxing(num);
+        return {
+          num: num,
+          numStr: String(num).padStart(2, '0'),
+          color: color,
+          zodiac: zodiac,
+          element: element
+        };
+      });
+      
+      // 创建历史记录项
+      const now = new Date();
+      const timeStr = now.toLocaleString('zh-CN', { 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      
+      const historyItem = {
+        id: Date.now() + Math.random(),
+        timestamp: Date.now(),
+        time: timeStr,
+        hotNumbers: hotNumbers,
+        latestExpect: latestExpect,
+        expect: predictExpect,
+        predictExpect: predictExpect,
+        actualSpecial: null,
+        isHit: false
+      };
+      
+      // 添加到历史记录
+      currentHistory.unshift(historyItem);
+      
+      // 限制最大记录数
+      if(currentHistory.length > Storage.HOT_NUMBERS_HISTORY_MAX_COUNT) {
+        currentHistory.length = Storage.HOT_NUMBERS_HISTORY_MAX_COUNT;
+      }
+      
+      // 保存更新
+      StateManager.setState({ hotNumbersHistory: currentHistory }, false);
+      Storage.saveHotNumbersHistory(currentHistory);
+      // 重新渲染特码热门top5历史
+      Business.renderHotNumbersHistory();
+    } catch(e) {
+      console.error('静默保存特码热门top5失败', e);
+    }
+  },
+
+  /**
+   * 更新特码热门top5历史与开奖记录的比较
+   */
+  updateHotNumbersHistoryComparison: () => {
+    const state = StateManager._state;
+    const historyData = state.analysis.historyData;
+    const hotNumbersHistory = state.hotNumbersHistory;
+    
+    if(historyData.length === 0 || hotNumbersHistory.length === 0) {
+      return;
+    }
+    
+    const latestItem = historyData[0];
+    const actualSpecial = Business.getSpecial(latestItem).te;
+    
+    const updatedHistory = hotNumbersHistory.map(item => {
+      // 只更新预测期号小于或等于最新开奖期号的记录
+      if(item.actualSpecial === null && Number(item.expect) <= Number(latestItem.expect)) {
+        const isHit = item.hotNumbers.some(hn => hn.num === actualSpecial);
+        return {
+          ...item,
+          actualSpecial: actualSpecial,
+          isHit: isHit
+        };
+      }
+      return item;
+    });
+    
+    StateManager.setState({ hotNumbersHistory: updatedHistory }, false);
+    Storage.saveHotNumbersHistory(updatedHistory);
+  },
+
+  /**
+   * 渲染特码热门top5历史
+   */
+  renderHotNumbersHistory: () => {
+    try {
+      const state = StateManager._state;
+      const historyListEl = document.getElementById('hotNumbersHistoryList');
+      
+      if(!historyListEl) return;
+      
+      const history = state.hotNumbersHistory;
+      
+      if(history.length === 0) {
+        historyListEl.innerHTML = '<div style="text-align:center;color:var(--sub-text);padding:20px;font-size:13px;">暂无特码热门top5历史</div>';
+        return;
+      }
+      
+      const pageSize = state.hotNumbersHistoryPageSize || 50;
+      const currentPage = state.hotNumbersHistoryPage || 1;
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const pageData = history.slice(startIndex, endIndex);
+      
+      let historyHtml = '';
+      pageData.forEach((item, index) => {
+        const globalIdx = startIndex + index;
+        
+        // 生成标题信息
+        const titleText = `第${item.expect}期 · 5个号 · 🔥`;
+        
+        // 生成号码显示（按数字大小排序）
+        let numbersHtml = '';
+        const sortedHotNumbers = [...item.hotNumbers].sort((a, b) => a.num - b.num);
+        sortedHotNumbers.forEach(hn => {
+          const isHit = item.actualSpecial !== null && hn.num === item.actualSpecial;
+          const tagClass = isHit ? 'history-tag hit' : 'history-tag';
+          numbersHtml += `<span class="${tagClass}" onclick="Business.showHotNumbersHistoryDetail(${globalIdx}, event)" style="cursor:pointer;">${hn.numStr}</span>`;
+        });
+        
+        // 生成开奖号码显示 - 仅在开奖后显示
+        let drawNumberHtml = '';
+        if(item.actualSpecial !== null) {
+          const drawClass = item.isHit ? 'history-tag hit' : 'history-tag miss';
+          drawNumberHtml = `<span class="${drawClass}" style="margin-left:auto;">${String(item.actualSpecial).padStart(2, '0')}</span>`;
+        }
+        
+        // 准备复制文本（号码列表）
+        const numbersText = sortedHotNumbers.map(hn => {
+          const numStr = String(hn.num).padStart(2, '0');
+          return numStr;
+        }).join(' ');
+        
+        historyHtml += `
+          <div class="special-history-item" data-index="${globalIdx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;touch-action:pan-y;" 
+            ontouchstart="Utils.SwipeRightCopyHandler.handleTouchStart(event, ${globalIdx}, 'hotNumbersHistory')" 
+            ontouchmove="Utils.SwipeRightCopyHandler.handleTouchMove(event, ${globalIdx}, 'hotNumbersHistory')" 
+            ontouchend="Utils.SwipeRightCopyHandler.handleTouchEnd(event, ${globalIdx}, 'hotNumbersHistory', (item) => '${numbersText}')">
+            <div class="special-history-delete" onclick="Business.deleteHotNumbersHistoryItem(${globalIdx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
+              <span style="font-size:14px;">删除</span>
+            </div>
+            <div class="special-history-content" style="transition:transform 0.3s ease;position:relative;z-index:5;background:var(--card);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="color:var(--sub-text);font-size:11px;">
+                  <span>${titleText}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${numbersHtml}${drawNumberHtml}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      historyListEl.innerHTML = historyHtml;
+      
+      // 渲染分页
+      const totalPages = Math.ceil(history.length / pageSize);
+      const paginationHtml = Utils.renderPagination(currentPage, totalPages, history.length, 'goToHotNumbersHistoryPage');
+      const paginationEl = document.getElementById('hotNumbersHistoryPagination');
+      if(paginationEl) {
+        paginationEl.innerHTML = paginationHtml;
+      }
+    } catch(e) {
+      console.error('渲染特码热门top5历史失败', e);
+    }
+  },
+
+  /**
+   * 切换特码热门top5历史页码
+   * @param {number} page - 页码
+   */
+  switchHotNumbersHistoryPage: (page) => {
+    try {
+      StateManager.setState({ hotNumbersHistoryPage: page }, false);
+      Business.renderHotNumbersHistory();
+    } catch(e) {
+      console.error('切换特码热门top5历史页码失败', e);
+    }
+  },
+  
+  /**
+   * 跳转到特码热门top5历史指定页码
+   * @param {number} page - 页码
+   */
+  goToHotNumbersHistoryPage: (page) => {
+    Business.switchHotNumbersHistoryPage(page);
+  },
+
+  /**
+   * 删除特码热门top5历史单条记录
+   * @param {number} id - 记录ID
+   */
+  deleteHotNumbersHistory: (id) => {
+    try {
+      const state = StateManager._state;
+      const history = state.hotNumbersHistory || [];
+      const newHistory = history.filter(item => item.id !== id);
+      StateManager.setState({ hotNumbersHistory: newHistory }, false);
+      Storage.saveHotNumbersHistory(newHistory);
+      Business.renderHotNumbersHistory();
+      Toast.show('记录已删除');
+    } catch(e) {
+      console.error('删除特码热门top5历史记录失败', e);
+    }
+  },
+
+  /**
+   * 复制特码热门top5历史记录到剪贴板
+   * @param {number} idx - 记录索引
+   */
+  copyHotNumbersHistory: (idx) => {
+    try {
+      const state = StateManager._state;
+      const history = state.hotNumbersHistory || [];
+      const item = history[idx];
+      
+      if(!item) return;
+      
+      // 按数字大小排序后复制
+      const sortedHotNumbers = [...item.hotNumbers].sort((a, b) => a.num - b.num);
+      const numbers = sortedHotNumbers.map(hn => hn.numStr).join(' ');
+      
+      navigator.clipboard.writeText(numbers).then(() => {
+        Toast.show('复制成功');
+      }).catch(() => {
+        Toast.show('复制失败');
+      });
+    } catch(e) {
+      console.error('复制特码热门top5历史记录失败', e);
+    }
+  },
+
+  /**
+   * 显示特码热门top5历史详情弹窗
+   * @param {number} idx - 记录索引
+   * @param {Event} event - 事件对象
+   */
+  showHotNumbersHistoryDetail: (idx, event) => {
+    if(event) event.stopPropagation();
+    
+    try {
+      const state = StateManager._state;
+      const history = state.hotNumbersHistory || [];
+      const item = history[idx];
+      
+      if(!item) return;
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      
+      // 按数字大小排序
+      const sortedHotNumbers = [...item.hotNumbers].sort((a, b) => a.num - b.num);
+      
+      const numHtml = sortedHotNumbers.map(hn => {
+        return `
+          <div style="display:inline-block;margin:0 8px 8px 0;">
+            <div class="ball ${hn.color}">${hn.numStr}</div>
+            <div style="text-align:center;margin-top:4px;font-size:12px;color:var(--sub-text);">${hn.zodiac}${hn.element ? '/' + hn.element : ''}</div>
+          </div>
+        `;
+      }).join('');
+      
+      const actualSpecialStr = item.actualSpecial ? String(item.actualSpecial).padStart(2, '0') : '待开奖';
+      const hitClass = item.isHit ? 'hit' : '';
+      
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">特码热门top5详情</h3>
+            <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          <div class="modal-info">
+            <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">预测信息</div>
+            <div style="font-size:13px;color:var(--sub-text);margin-bottom:16px;">
+              <div>预测期号：${item.expect} 期</div>
+              <div>生成时间：${item.time}</div>
+              <div>最新开奖：${item.latestExpect} 期</div>
+            </div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">特码热门top5</div>
+            <div style="margin-bottom:16px;">
+              ${numHtml}
+            </div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">开奖结果</div>
+            <div style="font-size:13px;color:var(--sub-text);">
+              <div>实际特码：<span class="${hitClass}">${actualSpecialStr}</span></div>
+              <div>是否命中：<span class="${hitClass}">${item.isHit ? '是' : '否'}</span></div>
+            </div>
+            <div style="margin-top:20px;">
+              <button class="btn-line" onclick="Business.copyHotNumbersHistory(${idx})">复制号码</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      modal.addEventListener('click', (e) => {
+        if(e.target === modal) modal.remove();
+      });
+      
+      document.body.appendChild(modal);
+    } catch(e) {
+      console.error('显示特码热门top5历史详情失败', e);
+    }
+  },
+
+  /**
+   * 删除特码热门top5历史单条记录（通过索引）
+   * @param {number} idx - 记录索引
+   * @param {Event} event - 事件对象
+   */
+  deleteHotNumbersHistoryItem: (idx, event) => {
+    if(event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    
+    if(!confirm('确定要删除这条记录吗？')) {
+      // 用户取消删除，恢复位置
+      const item = document.querySelector(`.special-history-item[data-index="${idx}"]`);
+      if(item) {
+        const content = item.querySelector('.special-history-content');
+        const deleteBtn = item.querySelector('.special-history-delete');
+        if(content) content.style.transform = 'translateX(0)';
+        if(deleteBtn) deleteBtn.style.transform = 'translateX(100%)';
+      }
+      return;
+    }
+    
+    try {
+      const state = StateManager._state;
+      const history = [...state.hotNumbersHistory];
+      
+      if(idx >= 0 && idx < history.length) {
+        history.splice(idx, 1);
+        StateManager.setState({ hotNumbersHistory: history }, false);
+        Storage.saveHotNumbersHistory(history);
+        Business.renderHotNumbersHistory();
+        Toast.show('记录已删除');
+      }
+    } catch(e) {
+      console.error('删除特码热门top5历史记录失败', e);
+    }
+  },
+
+  /**
+   * 清空特码热门top5历史
+   */
+  clearHotNumbersHistory: () => {
+    if(confirm('确定要清空所有特码热门top5历史吗？')) {
+      Storage.clearHotNumbersHistory();
+      StateManager.setState({ hotNumbersHistory: [] }, false);
+      Business.renderHotNumbersHistory();
+      Toast.show('特码热门top5历史已清空');
+    }
+  },
+
+  /**
+   * 切换特码热门top5历史展开/折叠
+   */
+  toggleHotNumbersHistory: () => {
+    const state = StateManager._state;
+    const expanded = !state.hotNumbersHistoryExpanded;
+    StateManager.setState({ hotNumbersHistoryExpanded: expanded }, false);
+    Business.renderHotNumbersHistory();
   }
 };
 
@@ -8404,6 +8957,10 @@ const EventBinder = {
       // 精选生肖历史操作
       if(action === 'clearSelectedZodiacHistory') Business.clearSelectedZodiacHistory();
       if(action === 'toggleSelectedZodiacHistory') Business.toggleSelectedZodiacHistory();
+      // 特码热门top5历史操作
+      if(action === 'clearHotNumbersHistory') Business.clearHotNumbersHistory();
+      if(action === 'toggleHotNumbersHistory') Business.toggleHotNumbersHistory();
+      if(action === 'switchHotNumbersHistoryPage') Business.switchHotNumbersHistoryPage(Number(actionBtn.dataset.page));
       return;
     }
 
@@ -8740,12 +9297,13 @@ async function initApp() {
       btn.classList.toggle('active', btn.dataset.mode === defaultHistoryMode);
     });
     
-    Business.renderSpecialHistory();
-    
-    // 11.5. 加载精选生肖历史并渲染
+    // 11.5. 加载精选生肖历史
     const selectedZodiacHistory = Storage.loadSelectedZodiacHistory();
     StateManager.setState({ selectedZodiacHistory: selectedZodiacHistory }, false);
-    Business.renderSelectedZodiacHistory();
+    
+    // 11.6. 加载特码热门top5历史
+    const hotNumbersHistory = Storage.loadHotNumbersHistory();
+    StateManager.setState({ hotNumbersHistory: hotNumbersHistory }, false);
 
     // 12. 初始化滑动处理器
     Utils.initSwipeHandlers();
@@ -8759,20 +9317,42 @@ async function initApp() {
     if(bottomNav) {
       bottomNav.classList.add('needs-space');
     }
-    // 15. 隐藏加载遮罩
+    
+    // 15. 确保记录页面DOM可用，强制渲染一次（即使页面隐藏）
+    // 使用单次渲染替代多次重复渲染
+    try {
+      const recordPage = document.getElementById('recordPage');
+      if(recordPage) {
+        // 临时显示记录页面以确保渲染成功
+        const originalDisplay = recordPage.style.display;
+        recordPage.style.display = 'block';
+        
+        // 统一渲染精选特码历史和精选生肖历史（仅一次）
+        Business.renderSpecialHistory();
+        Business.renderSelectedZodiacHistory();
+        Business.renderHotNumbersHistory();
+        
+        // 恢复原显示状态
+        recordPage.style.display = originalDisplay;
+      }
+    } catch(e) {
+      console.error('预渲染记录页面失败', e);
+    }
+    
+    // 16. 隐藏加载遮罩
     Render.hideLoading();
     
     // 延迟静默更新预测历史并保存精选特码和精选生肖
     setTimeout(() => {
       Business.silentUpdateAllPredictionHistory();
-      // 同时更新精选特码历史的开奖记录比较
+      // 同时更新精选特码历史和精选生肖历史的开奖记录比较
       Business.updateSpecialHistoryComparison();
-      // 重新渲染精选特码历史以显示最新比较结果
-      Business.renderSpecialHistory();
-      // 更新精选生肖历史的开奖记录比较
       Business.updateSelectedZodiacHistoryComparison();
-      // 重新渲染精选生肖历史以显示最新比较结果
+      Business.updateHotNumbersHistoryComparison();
+      // 统一重新渲染以显示最新比较结果（仅一次）
+      Business.renderSpecialHistory();
       Business.renderSelectedZodiacHistory();
+      Business.renderHotNumbersHistory();
       
       // 后台静默生成并保存所有精选特码组合
       try {
@@ -8786,6 +9366,13 @@ async function initApp() {
         Business.silentSaveAllSelectedZodiacs();
       } catch(e) {
         console.error('后台静默保存精选生肖失败', e);
+      }
+      
+      // 后台静默生成并保存特码热门top5
+      try {
+        Business.silentSaveHotNumbers();
+      } catch(e) {
+        console.error('后台静默保存特码热门top5失败', e);
       }
     }, 3000);
     
