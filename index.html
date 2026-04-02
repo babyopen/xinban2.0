@@ -315,6 +315,15 @@
     </div>
     <div class="card">
       <div class="card-header">
+        <h2>📊 预测统计</h2>
+        <button class="btn-mini" data-action="refreshPredictionStatistics" style="font-size:11px;">刷新</button>
+      </div>
+      <div class="card-body" id="predictionStatisticsBody">
+        <div style="text-align:center;color:var(--sub-text);padding:20px;">加载中...</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
         <h2>精选生肖</h2>
         <div style="display:flex;gap:4px;align-items:center;">
           <button class="btn-mini red" data-action="clearSelectedZodiacHistory" style="font-size:11px;">清空</button>
@@ -328,7 +337,7 @@
     </div>
     <div class="card">
       <div class="card-header">
-        <h2>预测历史</h2>
+        <h2>🔮 生肖预测历史</h2>
         <div style="display:flex;gap:4px;align-items:center;">
           <button class="btn-mini" data-action="togglePredictionFiltersPanel" style="font-size:11px;">选择</button>
           <button class="btn-mini red" data-action="clearZodiacPredictionHistory" style="font-size:11px;">清空</button>
@@ -355,6 +364,23 @@
         </div>
         <div id="zodiacPredictionHistoryToggle" style="display:none;margin-top:8px;">
           <button class="toggle-btn" data-action="toggleZodiacPredictionHistory" style="width:100%;">展开更多</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h2>🤖 ML预测历史</h2>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <button class="btn-mini" data-action="refreshMLPredictionHistory" style="font-size:11px;">刷新</button>
+          <button class="btn-mini red" data-action="clearMLPredictionHistory" style="font-size:11px;">清空</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="mlPredictionHistoryList">
+          <div class="empty-tip">暂无ML预测历史</div>
+        </div>
+        <div id="mlPredictionHistoryToggle" style="display:none;margin-top:8px;">
+          <button class="toggle-btn" data-action="toggleMLPredictionHistory" style="width:100%;">展开更多</button>
         </div>
       </div>
     </div>
@@ -1929,7 +1955,10 @@ const StateManager = {
     hotNumbersHistory: [],
     hotNumbersHistoryExpanded: false,
     hotNumbersHistoryPage: 1,
-    hotNumbersHistoryPageSize: 50
+    hotNumbersHistoryPageSize: 50,
+    // 预测历史状态
+    zodiacPredictionHistoryExpanded: false,
+    mlPredictionHistoryExpanded: false
   },
 
   /**
@@ -2046,7 +2075,10 @@ const Storage = {
     HISTORY_CACHE_TIME: 'historyCacheTime',
     SPECIAL_HISTORY: 'specialHistory',
     SELECTED_ZODIAC_HISTORY: 'selectedZodiacHistory',
-    HOT_NUMBERS_HISTORY: 'hotNumbersHistory'
+    HOT_NUMBERS_HISTORY: 'hotNumbersHistory',
+    ZODIAC_PREDICTION_HISTORY: 'zodiacPredictionHistory',
+    PREDICTION_HISTORY_FILTER: 'predictionHistoryFilter',
+    ML_PREDICTION_HISTORY: 'mlPredictionHistory'
   }),
 
   /**
@@ -2090,6 +2122,23 @@ const Storage = {
    * @readonly
    */
   HOT_NUMBERS_HISTORY_MAX_COUNT: 350,
+
+  /**
+   * 预测历史最大记录数
+   * @readonly
+   */
+  PREDICTION_HISTORY_MAX_COUNT: 100,
+
+  /**
+   * 预测状态枚举
+   * @readonly
+   */
+  PREDICTION_STATUS: Object.freeze({
+    PENDING: 'pending',
+    HIT: 'hit',
+    MISS: 'miss',
+    PARTIAL: 'partial'
+  }),
 
   /**
    * 内存兜底存储（隐私模式下localStorage不可用时使用）
@@ -3262,7 +3311,10 @@ const Business = {
         try {
           Business.renderSpecialHistory();
           Business.renderSelectedZodiacHistory();
-        Business.renderHotNumbersHistory();
+          Business.renderHotNumbersHistory();
+          Business.renderPredictionStatistics();
+          Business.renderZodiacPredictionHistory();
+          Business.renderMLPredictionHistory();
         } catch(e) {
           console.error('渲染记录页面内容失败', e);
         }
@@ -5964,7 +6016,7 @@ const Business = {
    */
   saveZodiacPredictionHistory: (sortedZodiacs, zodiacDetails) => {
     try {
-      const history = Storage.get('zodiacPredictionHistory', []);
+      const history = Storage.get(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
       const now = new Date();
       
       // 获取当前期数（预测的是下一期，所以期数+1）
@@ -6044,7 +6096,7 @@ const Business = {
         }
       }
       
-      Storage.set('zodiacPredictionHistory', history);
+      Storage.set(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, history);
     } catch(e) {
       console.error('保存预测历史失败', e);
     }
@@ -6192,6 +6244,9 @@ const Business = {
     
     contentContainer.innerHTML = html;
     
+    // 保存ML预测历史
+    Business.saveMLPredictionHistory(result);
+    
     // 滚动到结果区域
     resultContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
@@ -6205,7 +6260,7 @@ const Business = {
       const toggleEl = document.getElementById('zodiacPredictionHistoryToggle');
       if(!historyListEl) return;
       
-      const history = Storage.get('zodiacPredictionHistory', []);
+      const history = Storage.get(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
       const state = StateManager._state;
       const historyData = state.analysis.historyData || [];
       
@@ -6609,8 +6664,17 @@ const Business = {
         }
       }
       
+      // 检查并更新预测状态
+      Business.checkAndUpdatePredictionStatus();
+      
+      // 更新精选生肖历史的核对
+      Business.updateSelectedZodiacHistoryComparison();
+      
       // 重新渲染预测历史
       Business.renderZodiacPredictionHistory();
+      Business.renderMLPredictionHistory();
+      Business.renderSelectedZodiacHistory();
+      Business.renderPredictionStatistics();
       
     } catch(e) {
       console.error('静默更新预测历史失败', e);
@@ -6625,8 +6689,9 @@ const Business = {
       if(!confirm('确定要清空预测历史吗？')) {
         return;
       }
-      Storage.set('zodiacPredictionHistory', []);
+      Storage.set(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
       Business.renderZodiacPredictionHistory();
+      Business.renderPredictionStatistics();
       Toast.show('已清空预测历史');
     } catch(e) {
       console.error('清空预测历史失败', e);
@@ -6637,11 +6702,11 @@ const Business = {
    * 删除单条预测历史记录
    * @param {number} idx - 记录索引
    */
-  deleteZodiacPredictionHistoryItem: (idx) => {
+  deleteZodiacPredictionHistoryItem: (idx, evt) => {
     try {
+      if(evt) evt.stopPropagation();
       if(!confirm('确定删除该记录？')) return;
-      const state = StateManager._state;
-      const history = state.zodiacPredictionHistory || [];
+      const history = Storage.get(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
       
       if(idx < 0 || idx >= history.length) {
         Toast.show('删除失败：记录不存在');
@@ -6650,9 +6715,9 @@ const Business = {
       
       history.splice(idx, 1);
       
-      Storage.saveZodiacPredictionHistory(history);
-      StateManager.setState({ zodiacPredictionHistory: history }, false);
+      Storage.set(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, history);
       Business.renderZodiacPredictionHistory();
+      Business.renderPredictionStatistics();
       Toast.show('已删除');
     } catch(e) {
       console.error('删除预测历史记录失败', e);
@@ -6703,6 +6768,565 @@ const Business = {
     } catch (e) {
       console.error('复制生肖失败', e);
       Toast.show('复制失败，请手动复制');
+    }
+  },
+
+  /**
+   * 保存ML预测历史
+   * @param {Object} result - ML预测结果
+   */
+  saveMLPredictionHistory: (result) => {
+    try {
+      const history = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+      const now = new Date();
+      
+      const state = StateManager._state;
+      let predictExpect = null;
+      if (state.analysis.historyData && state.analysis.historyData[0]) {
+        const currentExpect = state.analysis.historyData[0].expect;
+        if (currentExpect) {
+          predictExpect = String(Number(currentExpect) + 1);
+        }
+      }
+      
+      const newRecord = {
+        id: now.getTime(),
+        expect: predictExpect,
+        timestamp: now.getTime(),
+        time: now.toLocaleString('zh-CN'),
+        type: 'ml',
+        predictions: result.predictions || [],
+        top3: result.top3 || [],
+        recommendation: result.recommendation || null,
+        status: Storage.PREDICTION_STATUS.PENDING,
+        actualZodiac: null,
+        actualNumber: null,
+        isHit: null
+      };
+      
+      history.unshift(newRecord);
+      
+      if (history.length > Storage.PREDICTION_HISTORY_MAX_COUNT) {
+        history.pop();
+      }
+      
+      Storage.set(Storage.KEYS.ML_PREDICTION_HISTORY, history);
+      
+      Business.checkAndUpdatePredictionStatus();
+    } catch (e) {
+      console.error('保存ML预测历史失败', e);
+    }
+  },
+
+  /**
+   * 检查并更新所有预测记录的状态
+   * 自动核对开奖结果
+   */
+  checkAndUpdatePredictionStatus: () => {
+    try {
+      const state = StateManager._state;
+      const historyData = state.analysis.historyData || [];
+      
+      if (historyData.length === 0) return;
+      
+      const expectToResult = {};
+      historyData.forEach(item => {
+        if (item.expect && item.zodiac) {
+          const zodArrRaw = item.zodiac.split(',');
+          const zodArr = zodArrRaw.map(z => CONFIG.ANALYSIS.ZODIAC_TRAD_TO_SIMP[z] || z);
+          const actualZodiac = zodArr[6] || '';
+          const codeArr = (item.openCode || '0,0,0,0,0,0,0').split(',');
+          const actualNumber = Math.max(0, Number(codeArr[6]));
+          
+          expectToResult[item.expect] = {
+            zodiac: actualZodiac,
+            number: actualNumber
+          };
+        }
+      });
+      
+      const zodiacHistory = Storage.get(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
+      let zodiacUpdated = false;
+      
+      zodiacHistory.forEach(record => {
+        if (record.expect && expectToResult[record.expect]) {
+          const actual = expectToResult[record.expect];
+          record.actualZodiac = actual.zodiac;
+          record.actualNumber = actual.number;
+          
+          if (record.predictions && record.predictions.length > 0) {
+            const isHit = record.predictions.some(p => p.zodiac === actual.zodiac);
+            record.isHit = isHit;
+            record.status = isHit ? Storage.PREDICTION_STATUS.HIT : Storage.PREDICTION_STATUS.MISS;
+          } else {
+            record.status = Storage.PREDICTION_STATUS.MISS;
+          }
+          
+          zodiacUpdated = true;
+        }
+      });
+      
+      if (zodiacUpdated) {
+        Storage.set(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, zodiacHistory);
+      }
+      
+      const mlHistory = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+      let mlUpdated = false;
+      
+      mlHistory.forEach(record => {
+        if (record.expect && expectToResult[record.expect]) {
+          const actual = expectToResult[record.expect];
+          record.actualZodiac = actual.zodiac;
+          record.actualNumber = actual.number;
+          
+          if (record.predictions && record.predictions.length > 0) {
+            const isHit = record.predictions.some(p => p.name === actual.zodiac);
+            record.isHit = isHit;
+            record.status = isHit ? Storage.PREDICTION_STATUS.HIT : Storage.PREDICTION_STATUS.MISS;
+          } else {
+            record.status = Storage.PREDICTION_STATUS.MISS;
+          }
+          
+          mlUpdated = true;
+        }
+      });
+      
+      if (mlUpdated) {
+        Storage.set(Storage.KEYS.ML_PREDICTION_HISTORY, mlHistory);
+      }
+      
+      if (zodiacUpdated || mlUpdated) {
+        Business.renderZodiacPredictionHistory();
+      }
+    } catch (e) {
+      console.error('检查并更新预测状态失败', e);
+    }
+  },
+
+  /**
+   * 获取预测统计数据
+   * @returns {Object} 统计结果
+   */
+  getPredictionStatistics: () => {
+    try {
+      const zodiacHistory = Storage.get(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
+      const mlHistory = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+      const selectedZodiacHistory = StateManager._state.selectedZodiacHistory || [];
+      
+      const allHistory = [...zodiacHistory, ...mlHistory, ...selectedZodiacHistory];
+      
+      const completed = allHistory.filter(r => {
+        if (r.status === Storage.PREDICTION_STATUS.HIT || r.status === Storage.PREDICTION_STATUS.MISS) {
+          return true;
+        }
+        if (r.actualZodiac !== null && r.actualZodiac !== undefined) {
+          return true;
+        }
+        return false;
+      });
+      
+      const hits = completed.filter(r => {
+        if (r.isHit !== undefined) {
+          return r.isHit;
+        }
+        return false;
+      });
+      
+      const pending = allHistory.filter(r => {
+        if (r.status === Storage.PREDICTION_STATUS.PENDING) {
+          return true;
+        }
+        if (r.actualZodiac === null || r.actualZodiac === undefined) {
+          return true;
+        }
+        return false;
+      });
+      
+      const hitRate = completed.length > 0 ? (hits.length / completed.length * 100).toFixed(1) : 0;
+      
+      const getStatsByType = (history) => {
+        const h = history || [];
+        const comp = h.filter(r => {
+          if (r.status === Storage.PREDICTION_STATUS.HIT || r.status === Storage.PREDICTION_STATUS.MISS) {
+            return true;
+          }
+          if (r.actualZodiac !== null && r.actualZodiac !== undefined) {
+            return true;
+          }
+          return false;
+        });
+        const hitCount = comp.filter(r => r.isHit).length;
+        return { total: h.length, hits: hitCount };
+      };
+      
+      return {
+        total: allHistory.length,
+        completed: completed.length,
+        hits: hits.length,
+        misses: completed.length - hits.length,
+        pending: pending.length,
+        hitRate: hitRate,
+        byType: {
+          zodiac: getStatsByType(zodiacHistory),
+          ml: getStatsByType(mlHistory),
+          selected: getStatsByType(selectedZodiacHistory)
+        }
+      };
+    } catch (e) {
+      console.error('获取预测统计失败', e);
+      return {
+        total: 0,
+        completed: 0,
+        hits: 0,
+        misses: 0,
+        pending: 0,
+        hitRate: 0,
+        byType: { 
+          zodiac: { total: 0, hits: 0 }, 
+          ml: { total: 0, hits: 0 },
+          selected: { total: 0, hits: 0 }
+        }
+      };
+    }
+  },
+
+  /**
+   * 显示预测历史详情
+   * @param {number} idx - 记录索引
+   * @param {string} type - 记录类型 ('zodiac' or 'ml')
+   */
+  showPredictionHistoryDetail: (idx, type = 'zodiac') => {
+    try {
+      const history = type === 'ml' 
+        ? Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, [])
+        : Storage.get(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
+      
+      const record = history[idx];
+      if (!record) {
+        Toast.show('记录不存在');
+        return;
+      }
+      
+      const statusText = {
+        [Storage.PREDICTION_STATUS.PENDING]: '⏳ 待开奖',
+        [Storage.PREDICTION_STATUS.HIT]: '✅ 命中',
+        [Storage.PREDICTION_STATUS.MISS]: '❌ 未中'
+      };
+      
+      const statusClass = {
+        [Storage.PREDICTION_STATUS.PENDING]: 'color: #FF9800',
+        [Storage.PREDICTION_STATUS.HIT]: 'color: #4CAF50',
+        [Storage.PREDICTION_STATUS.MISS]: 'color: #F44336'
+      };
+      
+      let predictionsHtml = '';
+      if (record.predictions && record.predictions.length > 0) {
+        record.predictions.forEach((p, i) => {
+          const zodiacName = p.name || p.zodiac;
+          const isMatch = record.actualZodiac && (zodiacName === record.actualZodiac);
+          const bgColor = isMatch ? 'rgba(76, 175, 80, 0.2)' : 'var(--bg)';
+          const borderColor = isMatch ? '#4CAF50' : 'var(--border)';
+          
+          predictionsHtml += `
+            <div style="padding:10px;background:${bgColor};border:1px solid ${borderColor};border-radius:8px;margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-weight:600;">${i + 1}. ${zodiacName}</span>
+                ${p.score ? `<span style="color:var(--sub-text);font-size:12px;">${p.score}分</span>` : ''}
+                ${p.probability ? `<span style="color:var(--sub-text);font-size:12px;">${(p.probability * 100).toFixed(1)}%</span>` : ''}
+              </div>
+              ${p.element ? `<div style="color:var(--sub-text);font-size:12px;margin-top:4px;">${p.element} · ${p.color || ''}</div>` : ''}
+            </div>
+          `;
+        });
+      }
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">预测详情</h3>
+            <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">×</button>
+          </div>
+          
+          <div class="modal-info">
+            <div class="modal-info-row">
+              <span class="modal-info-label">预测类型：</span>${type === 'ml' ? '🤖 ML预测' : '🔮 生肖预测'}
+            </div>
+            ${record.expect ? `<div class="modal-info-row"><span class="modal-info-label">预测期数：</span>第${record.expect}期</div>` : ''}
+            <div class="modal-info-row">
+              <span class="modal-info-label">预测时间：</span>${record.time}
+            </div>
+            <div class="modal-info-row">
+              <span class="modal-info-label">状态：</span>
+              <span style="${statusClass[record.status] || ''};font-weight:600;">
+                ${statusText[record.status] || '未知'}
+              </span>
+            </div>
+            ${record.actualZodiac ? `
+              <div class="modal-info-row">
+                <span class="modal-info-label">实际开奖：</span>
+                ${record.actualZodiac} ${record.actualNumber ? `(${record.actualNumber})` : ''}
+              </div>
+            ` : ''}
+          </div>
+          
+          <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">预测结果</div>
+          <div style="max-height:300px;overflow-y:auto;">
+            ${predictionsHtml || '<div style="text-align:center;color:var(--sub-text);padding:20px;">暂无预测数据</div>'}
+          </div>
+        </div>
+      `;
+      
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+      
+      document.body.appendChild(modal);
+    } catch (e) {
+      console.error('显示预测历史详情失败', e);
+    }
+  },
+
+  /**
+   * 清空ML预测历史
+   */
+  clearMLPredictionHistory: () => {
+    try {
+      if (!confirm('确定清空所有ML预测历史？')) return;
+      Storage.set(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+      Business.renderMLPredictionHistory();
+      Business.renderPredictionStatistics();
+      Toast.show('已清空ML预测历史');
+    } catch (e) {
+      console.error('清空ML预测历史失败', e);
+    }
+  },
+
+  /**
+   * 渲染预测统计
+   */
+  renderPredictionStatistics: () => {
+    try {
+      const bodyEl = document.getElementById('predictionStatisticsBody');
+      if (!bodyEl) return;
+
+      const stats = Business.getPredictionStatistics();
+
+      let html = '';
+
+      html += `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+          <div style="padding:16px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:12px;color:white;text-align:center;">
+            <div style="font-size:28px;font-weight:bold;">${stats.total}</div>
+            <div style="font-size:12px;opacity:0.9;">总预测数</div>
+          </div>
+          <div style="padding:16px;background:linear-gradient(135deg,#11998e 0%,#38ef7d 100%);border-radius:12px;color:white;text-align:center;">
+            <div style="font-size:28px;font-weight:bold;">${stats.hits}</div>
+            <div style="font-size:12px;opacity:0.9;">命中数</div>
+          </div>
+          <div style="padding:16px;background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);border-radius:12px;color:white;text-align:center;">
+            <div style="font-size:28px;font-weight:bold;">${stats.hitRate}%</div>
+            <div style="font-size:12px;opacity:0.9;">命中率</div>
+          </div>
+          <div style="padding:16px;background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%);border-radius:12px;color:white;text-align:center;">
+            <div style="font-size:28px;font-weight:bold;">${stats.pending}</div>
+            <div style="font-size:12px;opacity:0.9;">待开奖</div>
+          </div>
+        </div>
+      `;
+
+      if (stats.byType.zodiac.total > 0 || stats.byType.ml.total > 0 || stats.byType.selected.total > 0) {
+        html += `
+          <div style="margin-top:16px;">
+            <div style="font-size:14px;color:var(--text);font-weight:600;margin-bottom:12px;">📌 分类统计</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+              <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <span style="color:var(--sub-text);">🔮 生肖预测</span>
+                  <span style="font-weight:600;">${stats.byType.zodiac.total} 次</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="color:var(--sub-text);">命中</span>
+                  <span style="color:#4CAF50;font-weight:600;">${stats.byType.zodiac.hits}</span>
+                </div>
+              </div>
+              <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <span style="color:var(--sub-text);">🤖 ML预测</span>
+                  <span style="font-weight:600;">${stats.byType.ml.total} 次</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="color:var(--sub-text);">命中</span>
+                  <span style="color:#4CAF50;font-weight:600;">${stats.byType.ml.hits}</span>
+                </div>
+              </div>
+              <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <span style="color:var(--sub-text);">✨ 精选生肖</span>
+                  <span style="font-weight:600;">${stats.byType.selected.total} 次</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="color:var(--sub-text);">命中</span>
+                  <span style="color:#4CAF50;font-weight:600;">${stats.byType.selected.hits}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      bodyEl.innerHTML = html;
+    } catch (e) {
+      console.error('渲染预测统计失败', e);
+    }
+  },
+
+  /**
+   * 渲染ML预测历史
+   */
+  renderMLPredictionHistory: () => {
+    try {
+      const historyListEl = document.getElementById('mlPredictionHistoryList');
+      const toggleEl = document.getElementById('mlPredictionHistoryToggle');
+      if (!historyListEl) return;
+
+      const history = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+      const state = StateManager._state;
+      const historyData = state.analysis.historyData || [];
+
+      const isExpanded = state.mlPredictionHistoryExpanded || false;
+
+      const expectToZodiac = {};
+      historyData.forEach(dataItem => {
+        if (dataItem.expect && dataItem.zodiac) {
+          const zodArrRaw = dataItem.zodiac.split(',');
+          const zodArr = zodArrRaw.map(z => CONFIG.ANALYSIS.ZODIAC_TRAD_TO_SIMP[z] || z);
+          expectToZodiac[dataItem.expect] = zodArr[6] || '';
+        }
+      });
+
+      const showCount = isExpanded ? history.length : Math.min(4, history.length);
+      const displayHistory = history.slice(0, showCount);
+
+      if (history.length === 0) {
+        historyListEl.innerHTML = '<div style="text-align:center;color:var(--sub-text);padding:20px;font-size:13px;">暂无ML预测历史</div>';
+        if (toggleEl) toggleEl.style.display = 'none';
+        return;
+      }
+
+      let html = '';
+      displayHistory.forEach((item, idx) => {
+        const actualZodiac = item.expect ? expectToZodiac[item.expect] : '';
+
+        let isMatch = false;
+
+        if (actualZodiac && item.predictions) {
+          isMatch = item.predictions.some(p => p.name === actualZodiac);
+        }
+
+        const statusText = {
+          [Storage.PREDICTION_STATUS.PENDING]: '⏳ 待开奖',
+          [Storage.PREDICTION_STATUS.HIT]: '✅ 命中',
+          [Storage.PREDICTION_STATUS.MISS]: '❌ 未中'
+        };
+
+        const statusColor = {
+          [Storage.PREDICTION_STATUS.PENDING]: '#FF9800',
+          [Storage.PREDICTION_STATUS.HIT]: '#4CAF50',
+          [Storage.PREDICTION_STATUS.MISS]: '#F44336'
+        };
+
+        const predictions = (item.top3 || []).map((p, i) => {
+          const isMatchZodiac = actualZodiac && p.name === actualZodiac;
+          const tagClass = isMatchZodiac ? 'history-tag hit' : 'history-tag';
+          return `<span class="${tagClass}" onclick="Business.showPredictionHistoryDetail(${idx}, 'ml')" style="cursor:pointer;">${p.name}</span>`;
+        }).join('');
+
+        const actualTag = actualZodiac 
+          ? `<span class="history-tag ${isMatch ? 'hit' : 'miss'}" onclick="Business.showPredictionHistoryDetail(${idx}, 'ml')" style="cursor:pointer;">${actualZodiac}</span>` 
+          : '';
+
+        html += `
+          <div class="special-history-item" data-index="${idx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;">
+            <div class="special-history-delete" onclick="Business.deleteMLPredictionHistoryItem(${idx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
+              <span style="font-size:14px;">删除</span>
+            </div>
+            <div class="special-history-content" style="transition:transform 0.3s ease;position:relative;z-index:5;background:var(--card);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="color:var(--sub-text);font-size:11px;">
+                  <span>${item.expect ? `第${item.expect}期 · ` : ''}${item.time}</span>
+                </div>
+                <span style="font-size:11px;color:${statusColor[item.status] || 'var(--text)'};">
+                  ${statusText[item.status] || ''}
+                </span>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">${predictions}</div>
+                ${actualTag}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      historyListEl.innerHTML = html;
+
+      if (toggleEl) {
+        if (history.length > 4) {
+          toggleEl.style.display = 'block';
+          const toggleBtn = toggleEl.querySelector('button');
+          if (toggleBtn) {
+            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${history.length - 4}条）`;
+          }
+        } else {
+          toggleEl.style.display = 'none';
+        }
+      }
+    } catch (e) {
+      console.error('渲染ML预测历史失败', e);
+    }
+  },
+
+  /**
+   * 切换ML预测历史的展开/折叠状态
+   */
+  toggleMLPredictionHistory: () => {
+    try {
+      const state = StateManager._state;
+      const newExpanded = !state.mlPredictionHistoryExpanded;
+      StateManager.setState({ mlPredictionHistoryExpanded: newExpanded }, false);
+      Business.renderMLPredictionHistory();
+    } catch (e) {
+      console.error('切换ML预测历史展开状态失败', e);
+    }
+  },
+
+  /**
+   * 删除单条ML预测历史记录
+   * @param {number} idx - 记录索引
+   */
+  deleteMLPredictionHistoryItem: (idx, evt) => {
+    try {
+      evt.stopPropagation();
+      if (!confirm('确定删除该记录？')) return;
+      const history = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+
+      if (idx < 0 || idx >= history.length) {
+        Toast.show('删除失败：记录不存在');
+        return;
+      }
+
+      history.splice(idx, 1);
+
+      Storage.set(Storage.KEYS.ML_PREDICTION_HISTORY, history);
+      Business.renderMLPredictionHistory();
+      Business.renderPredictionStatistics();
+      Toast.show('已删除');
+    } catch (e) {
+      console.error('删除ML预测历史记录失败', e);
+      Toast.show('删除失败');
     }
   },
 
@@ -8601,8 +9225,9 @@ const Business = {
   /**
    * 删除精选生肖历史单条记录
    */
-  deleteSelectedZodiacHistoryItem: (idx) => {
+  deleteSelectedZodiacHistoryItem: (idx, evt) => {
     try {
+      if(evt) evt.stopPropagation();
       if(!confirm('确定删除该记录？')) return;
       const state = StateManager._state;
       const history = state.selectedZodiacHistory || [];
@@ -8617,6 +9242,7 @@ const Business = {
       Storage.saveSelectedZodiacHistory(history);
       StateManager.setState({ selectedZodiacHistory: history }, false);
       Business.renderSelectedZodiacHistory();
+      Business.renderPredictionStatistics();
       Toast.show('已删除');
     } catch(e) {
       console.error('删除精选生肖历史记录失败', e);
@@ -8906,6 +9532,7 @@ const Business = {
       Storage.clearSelectedZodiacHistory();
       StateManager.setState({ selectedZodiacHistory: [] }, false);
       Business.renderSelectedZodiacHistory();
+      Business.renderPredictionStatistics();
       Toast.show('精选生肖历史已清空');
     }
   },
@@ -9532,6 +10159,20 @@ const EventBinder = {
       if(action === 'confirmPredictionFilters') Business.confirmPredictionFilters();
       // 切换预测历史展开/折叠
       if(action === 'toggleZodiacPredictionHistory') Business.toggleZodiacPredictionHistory();
+      // 预测统计操作
+      if(action === 'refreshPredictionStatistics') {
+        Business.checkAndUpdatePredictionStatus();
+        Business.updateSelectedZodiacHistoryComparison();
+        Business.renderPredictionStatistics();
+        Business.renderSelectedZodiacHistory();
+      }
+      // ML预测历史操作
+      if(action === 'clearMLPredictionHistory') Business.clearMLPredictionHistory();
+      if(action === 'toggleMLPredictionHistory') Business.toggleMLPredictionHistory();
+      if(action === 'refreshMLPredictionHistory') {
+        Business.checkAndUpdatePredictionStatus();
+        Business.renderMLPredictionHistory();
+      }
       // 精选特码历史操作
       if(action === 'clearSpecialHistory') Business.clearSpecialHistory();
       if(action === 'toggleSpecialHistory') Business.toggleSpecialHistory();
