@@ -10056,6 +10056,10 @@ const EventBinder = {
   _longPressTarget: null,  // 长按目标元素
 
   init: () => {
+    // 添加鼠标事件监听（用于桌面端长按）
+    document.addEventListener('mousedown', EventBinder.handleMouseDown);
+    document.addEventListener('mouseup', EventBinder.handleMouseUp);
+    document.addEventListener('mousemove', EventBinder.handleMouseMove);
     // 全局点击事件委托
     document.addEventListener('click', EventBinder.handleGlobalClick);
     // 键盘回车/空格事件（无障碍支持）
@@ -10611,6 +10615,53 @@ const EventBinder = {
         cancelBtn.click();
       }
     });
+  },
+
+  /**
+   * 鼠标按下事件处理（用于桌面端长按）
+   * @param {MouseEvent} e - 鼠标事件
+   */
+  handleMouseDown: (e) => {
+    // 长按检测
+    const target = e.target.closest('.special-history-content');
+    if(target) {
+      EventBinder._longPressTarget = target;
+      EventBinder._longPressTimer = setTimeout(() => {
+        if(EventBinder._longPressTarget) {
+          EventBinder.showDeleteConfirmModal(EventBinder._longPressTarget);
+        }
+      }, EventBinder._longPressDuration);
+    }
+  },
+
+  /**
+   * 鼠标释放事件处理（用于桌面端长按）
+   * @param {MouseEvent} e - 鼠标事件
+   */
+  handleMouseUp: (e) => {
+    // 清除长按定时器
+    if(EventBinder._longPressTimer) {
+      clearTimeout(EventBinder._longPressTimer);
+      EventBinder._longPressTimer = null;
+    }
+    EventBinder._longPressTarget = null;
+  },
+
+  /**
+   * 鼠标移动事件处理（用于桌面端长按）
+   * @param {MouseEvent} e - 鼠标事件
+   */
+  handleMouseMove: (e) => {
+    // 如果鼠标移动超过一定距离，取消长按
+    if(EventBinder._longPressTarget) {
+      // 这里可以添加移动距离检测逻辑
+      // 简单处理：只要移动就取消长按
+      if(EventBinder._longPressTimer) {
+        clearTimeout(EventBinder._longPressTimer);
+        EventBinder._longPressTimer = null;
+      }
+      EventBinder._longPressTarget = null;
+    }
   }
 };
 
