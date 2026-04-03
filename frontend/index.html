@@ -17,6 +17,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#007AFF">
 <title>小摇筛选 v26.6.1</title>
@@ -10076,6 +10077,8 @@ const EventBinder = {
     // 添加触摸滑动事件监听（用于分析页面标签切换）
     document.addEventListener('touchstart', EventBinder.handleTouchStart, { passive: true });
     document.addEventListener('touchend', EventBinder.handleTouchEnd, { passive: true });
+    // 添加触摸移动事件监听（用于取消长按）
+    document.addEventListener('touchmove', EventBinder.handleTouchMove, { passive: true });
     
 
     
@@ -10493,10 +10496,12 @@ const EventBinder = {
     EventBinder._touchStartX = e.changedTouches[0].screenX;
     EventBinder._touchStartY = e.changedTouches[0].screenY;
     
-    // 长按检测
-    const target = e.target.closest('.special-history-content');
+    // 长按检测 - 支持长按记录标题(span)或整个记录卡片
+    const target = e.target.closest('.special-history-content') || e.target.closest('span');
     if(target) {
-      EventBinder._longPressTarget = target;
+      // 如果点击的是span，找到其父级的.special-history-content
+      const contentTarget = target.closest('.special-history-content') || target;
+      EventBinder._longPressTarget = contentTarget;
       EventBinder._longPressTimer = setTimeout(() => {
         if(EventBinder._longPressTarget) {
           EventBinder.showDeleteConfirmModal(EventBinder._longPressTarget);
@@ -10622,12 +10627,16 @@ const EventBinder = {
    * @param {MouseEvent} e - 鼠标事件
    */
   handleMouseDown: (e) => {
-    // 长按检测
-    const target = e.target.closest('.special-history-content');
+    // 长按检测 - 支持长按记录标题(span)或整个记录卡片
+    const target = e.target.closest('.special-history-content') || e.target.closest('span');
+    console.log('Mouse down on:', e.target, 'Target:', target);
     if(target) {
-      EventBinder._longPressTarget = target;
+      // 如果点击的是span，找到其父级的.special-history-content
+      const contentTarget = target.closest('.special-history-content') || target;
+      EventBinder._longPressTarget = contentTarget;
       EventBinder._longPressTimer = setTimeout(() => {
         if(EventBinder._longPressTarget) {
+          console.log('Long press detected, showing modal');
           EventBinder.showDeleteConfirmModal(EventBinder._longPressTarget);
         }
       }, EventBinder._longPressDuration);
