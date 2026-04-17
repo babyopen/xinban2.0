@@ -7,6 +7,7 @@
 
 import pandas as pd
 import numpy as np
+import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, log_loss, classification_report
 import json
@@ -440,6 +441,7 @@ def evaluate_model(model, X_test, y_test):
     print(f"Top-3 准确率: {top3_accuracy:.4f}")
     
     # 对数损失
+    loss = None
     try:
         loss = log_loss(y_test, y_pred_proba, labels=list(range(12)))
         print(f"对数损失: {loss:.4f}")
@@ -605,17 +607,25 @@ def predict_next(model, last_period_data, all_history):
     # 预测概率
     probabilities = model.predict_proba(X)[0]
     
+    # 确保有12个元素
+    if len(probabilities) < 12:
+        new_probs = np.zeros(12)
+        new_probs[:len(probabilities)] = probabilities
+        probabilities = new_probs
+    
     return probabilities
 
 
 def save_model(model, file_path='zodiac_model.pkl'):
     """
     保存模型
-    
+
     Args:
         model: 训练好的模型
         file_path: 保存路径
     """
+    if not os.path.isabs(file_path):
+        file_path = os.path.join(os.path.dirname(__file__), file_path)
     with open(file_path, 'wb') as f:
         pickle.dump(model, f)
     print(f"\n模型已保存: {file_path}")
@@ -646,7 +656,8 @@ def main():
     print("=" * 60)
     
     # 1. 加载数据
-    df = load_data('lottery_history.csv')
+    data_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'lottery_history.csv')
+    df = load_data(data_file)
     if df is None:
         print("请确保 lottery_history.csv 文件存在")
         return
@@ -666,7 +677,7 @@ def main():
     model = train_model(X_train, y_train)
     
     # 5. 评估模型
-    metrics = evaluate_model(model, X_test, y_test)
+    evaluate_model(model, X_test, y_test)
     
     # 6. 特征重要性
     get_feature_importance(model, feature_names)

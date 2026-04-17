@@ -1,0 +1,254 @@
+{
+  "mlPredictionHistory": [
+    {
+      "id": 1775577426019,
+      "expect": "096",
+      "timestamp": 1775577426019,
+      "time": "2026-04-07 23:57:06",
+      "type": "ml",
+      "predictions": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "top3": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "recommendation": {
+        "id": 6,
+        "name": "牛",
+        "probability": 0.1282
+      },
+      "status": "PENDING",
+      "actualZodiac": null,
+      "actualNumber": null,
+      "isHit": null
+    },
+    {
+      "id": 1775491026019,
+      "expect": "097",
+      "timestamp": 1775491026019,
+      "time": "2026-04-06 23:57:06",
+      "type": "ml",
+      "predictions": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "top3": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "recommendation": {
+        "id": 6,
+        "name": "牛",
+        "probability": 0.1282
+      },
+      "status": "PENDING",
+      "actualZodiac": null,
+      "actualNumber": null,
+      "isHit": null
+    },
+    {
+      "id": 1775404626019,
+      "expect": "098",
+      "timestamp": 1775404626019,
+      "time": "2026-04-05 23:57:06",
+      "type": "ml",
+      "predictions": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "top3": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "recommendation": {
+        "id": 6,
+        "name": "牛",
+        "probability": 0.1282
+      },
+      "status": "PENDING",
+      "actualZodiac": null,
+      "actualNumber": null,
+      "isHit": null
+    },
+    {
+      "id": 1775318226019,
+      "expect": "099",
+      "timestamp": 1775318226019,
+      "time": "2026-04-04 23:57:06",
+      "type": "ml",
+      "predictions": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "top3": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "recommendation": {
+        "id": 6,
+        "name": "牛",
+        "probability": 0.1282
+      },
+      "status": "PENDING",
+      "actualZodiac": null,
+      "actualNumber": null,
+      "isHit": null
+    },
+    {
+      "id": 1775231826019,
+      "expect": "0910",
+      "timestamp": 1775231826019,
+      "time": "2026-04-03 23:57:06",
+      "type": "ml",
+      "predictions": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "top3": [
+        {
+          "id": 6,
+          "name": "牛",
+          "probability": 0.1282
+        },
+        {
+          "id": 11,
+          "name": "猴",
+          "probability": 0.1203
+        },
+        {
+          "id": 9,
+          "name": "狗",
+          "probability": 0.1167
+        }
+      ],
+      "recommendation": {
+        "id": 6,
+        "name": "牛",
+        "probability": 0.1282
+      },
+      "status": "PENDING",
+      "actualZodiac": null,
+      "actualNumber": null,
+      "isHit": null
+    }
+  ]
+}

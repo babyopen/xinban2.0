@@ -11,6 +11,7 @@ import numpy as np
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import pickle
 import os
+import pandas as pd
 
 # ============================================
 # 生肖配置 - 与项目内 CONFIG.ANALYSIS.ZODIAC_ALL 保持一致
@@ -70,7 +71,7 @@ class MLPredictor:
     
     def load_model(self):
         """加载训练好的模型"""
-        model_path = 'zodiac_model.pkl'
+        model_path = os.path.join(os.path.dirname(__file__), 'zodiac_model.pkl')
         if os.path.exists(model_path):
             with open(model_path, 'rb') as f:
                 self.model = pickle.load(f)
@@ -92,6 +93,12 @@ class MLPredictor:
         if self.model is None:
             return {"error": "模型未加载"}
         
+        # 如果没有提供历史数据，从文件中加载
+        if not history_data:
+            history_data = self._load_history_from_file()
+            if not history_data:
+                return {"error": "历史数据不足，需要至少50期"}
+        
         if len(history_data) < 50:
             return {"error": "历史数据不足，需要至少50期"}
         
@@ -100,6 +107,12 @@ class MLPredictor:
         
         # 预测概率
         probabilities = self.model.predict_proba([features])[0]
+        
+        # 确保概率数组长度为12
+        if len(probabilities) < 12:
+            new_probs = np.zeros(12)
+            new_probs[:len(probabilities)] = probabilities
+            probabilities = new_probs
         
         # 排序结果 - 使用项目内的生肖顺序
         results = []
@@ -123,6 +136,30 @@ class MLPredictor:
             "top3": results[:3],
             "recommendation": results[0]
         }
+    
+    def _load_history_from_file(self):
+        """
+        从lottery_history.csv文件加载历史数据
+        
+        Returns:
+            list: 历史开奖数据列表 [{period, zodiac}, ...]
+        """
+        history_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'lottery_history.csv')
+        if not os.path.exists(history_file):
+            return []
+        
+        try:
+            df = pd.read_csv(history_file)
+            history_data = []
+            for _, row in df.iterrows():
+                history_data.append({
+                    "period": int(row['period']),
+                    "zodiac": int(row['zodiac'])
+                })
+            return history_data
+        except Exception as e:
+            print(f"加载历史数据失败: {e}")
+            return []
     
     def _build_features(self, history_data):
         """
