@@ -1,31 +1,32 @@
-# macOS 系统文件
+# macOS
 .DS_Store
-.AppleDouble
-.LSOverride
 
-# 编辑器临时文件
-*.swp
-*.swo
-*~
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# 依赖包
-node_modules/
+# Logs
+*.log
+logs/
 
-# 构建产物
-dist/
-build/
-.vite/
+# Model files (too large)
+*.pkl
+*.h5
+*.hdf5
 
-# 备份文件
+# Temporary files
+*.tmp
 *.bak
-*.backup
-Code_*.html
-
-# 整合版旧文件
-index-整合版.html
-index-full.html
-script-整合版.js
-style-整合版.css
-script.js
+*.cache

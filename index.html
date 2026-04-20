@@ -789,7 +789,7 @@
               <!-- ML预测结果区域 -->
               <div id="mlPredictionResult" style="display:none;margin-bottom:15px;padding:15px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:8px;color:white;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                  <span style="font-weight:bold;font-size:16px;">🤖 ML模型预测结果</span>
+                  <span id="mlPredictionPeriod" style="font-weight:bold;font-size:16px;">🤖 ML模型预测结果</span>
                   <span id="mlPredictionTime" style="font-size:12px;opacity:0.8;"></span>
                 </div>
                 <div id="mlPredictionContent"></div>
@@ -903,7 +903,7 @@ const CONFIG = Object.freeze({
   DATA_VERSION: 1, // 数据版本号，用于后续数据迁移
   // API配置
   API: Object.freeze({
-    HISTORY: 'https://history.macaumarksix.com/history/macaujc2/y/'
+    HISTORY: 'http://localhost:5001/history/macaujc2/y/'
   }),
   // 动画配置
   TOAST_DURATION: 2000,
@@ -924,6 +924,21 @@ const CONFIG = Object.freeze({
   SPRING_FESTIVAL: Object.freeze({
     2025: '2025-01-29', 2026: '2026-02-17', 2027: '2027-02-06',
     2028: '2028-01-26', 2029: '2029-02-13', 2030: '2030-02-03'
+  }),
+  // 生肖-号码固定分配表（与后端完全一致）
+  ZODIAC_ALLOCATION: Object.freeze({
+    '马': [1, 13, 25, 37, 49],
+    '羊': [12, 24, 36, 48],
+    '猴': [11, 23, 35, 47],
+    '鸡': [10, 22, 34, 46],
+    '狗': [9, 21, 33, 45],
+    '猪': [8, 20, 32, 44],
+    '鼠': [7, 19, 31, 43],
+    '牛': [6, 18, 30, 42],
+    '虎': [5, 17, 29, 41],
+    '兔': [4, 16, 28, 40],
+    '龙': [3, 15, 27, 39],
+    '蛇': [2, 14, 26, 38]
   }),
   // 分类配置
   JIAQIN: Object.freeze(['马','牛','羊','鸡','狗','猪']),
@@ -946,9 +961,9 @@ const CONFIG = Object.freeze({
   SMALL_RANGE: Object.freeze([1,24]),
   // 分析模块配置
   ANALYSIS: Object.freeze({
-    ZODIAC_ALL: Object.freeze(["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]),
-    HOME_ZODIAC: Object.freeze(['鼠','牛','兔','马','羊','鸡','狗','猪']),
-    WILD_ZODIAC: Object.freeze(['虎','龙','蛇','猴']),
+    ZODIAC_ALL: Object.freeze(["马","蛇","龙","兔","虎","牛","鼠","猪","狗","鸡","猴","羊"]),
+    HOME_ZODIAC: Object.freeze(['马','牛','羊','鸡','狗','猪']),
+    WILD_ZODIAC: Object.freeze(['鼠','虎','兔','龙','蛇','猴']),
     ZODIAC_TRAD_TO_SIMP: Object.freeze({
       '鼠': '鼠', '牛': '牛', '虎': '虎', '兔': '兔',
       '龍': '龙', '龙': '龙', '蛇': '蛇', '馬': '马', '马': '马',
@@ -1827,12 +1842,15 @@ const DataQuery = {
    * @returns {string} 生肖
    */
   _getZodiacByNum: (num) => {
-    const state = StateManager._state;
-    if(state.zodiacCycle && state.zodiacCycle.length === 12) {
-      return state.zodiacCycle[(num - 1) % 12];
+    // 使用固定分配表（与后端完全一致）
+    const allocation = CONFIG.ZODIAC_ALLOCATION;
+    for(const [zodiac, nums] of Object.entries(allocation)) {
+      if(nums.includes(num)) {
+        return zodiac;
+      }
     }
-    const fallbackCycle = ['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
-    return fallbackCycle[(num - 1) % 12];
+    // 如果找不到（不应该发生），默认返回马
+    return '马';
   },
 
   /**
@@ -2083,10 +2101,10 @@ const Storage = {
   }),
 
   /**
-   * 缓存有效期（毫秒）- 1小时
+   * 缓存有效期（毫秒）- 5分钟
    * @readonly
    */
-  CACHE_DURATION: 60 * 60 * 1000,
+  CACHE_DURATION: 5 * 60 * 1000,
 
   /**
    * 精选特码历史缓存有效期（毫秒）- 30天
@@ -2276,19 +2294,19 @@ const Storage = {
 
   /**
    * 加载缓存的历史数据
-   * @returns {Object|null} 缓存的数据和是否过期
+   * @returns {Object} 包含 data, expired, dataCount 的对象
    */
   loadHistoryCache: () => {
     const cacheTime = Storage.get(Storage.KEYS.HISTORY_CACHE_TIME, 0);
     const now = Date.now();
-    
+    const historyData = Storage.get(Storage.KEYS.HISTORY_CACHE, []);
+
     // 检查缓存是否过期
     if(now - cacheTime > Storage.CACHE_DURATION) {
-      return { data: null, expired: true };
+      return { data: null, expired: true, dataCount: 0 };
     }
-    
-    const historyData = Storage.get(Storage.KEYS.HISTORY_CACHE, []);
-    return { data: historyData, expired: false };
+
+    return { data: historyData, expired: false, dataCount: Array.isArray(historyData) ? historyData.length : 0 };
   },
 
   /**
@@ -2707,27 +2725,13 @@ const Render = {
    */
   buildZodiacCycle: () => {
     try {
-      // 获取当前农历生肖
-      const now = new Date();
-      const year = now.getFullYear();
-      const thisYearSpring = new Date(CONFIG.SPRING_FESTIVAL[year]);
-      const zodiacYear = now < thisYearSpring ? year - 1 : year;
-      const branchIndex = (zodiacYear - 4) % 12;
-      const currentBranch = CONFIG.EARTHLY_BRANCHES[branchIndex];
-      const currentZodiac = CONFIG.ZODIAC_BASE[currentBranch];
+      // 直接使用配置文件中的生肖顺序
+      const zodiacCycle = CONFIG.ANALYSIS.ZODIAC_ALL;
+      const currentZodiac = zodiacCycle[0];
       
-      // 生成生肖循环数组
-      const currentIndex = CONFIG.EARTHLY_BRANCHES.indexOf(currentBranch);
-      const cycleBranches = [];
-      for(let i=0; i<12; i++){
-        const index = (currentIndex - i + 12) % 12;
-        cycleBranches.push(CONFIG.EARTHLY_BRANCHES[index]);
-      }
-      const zodiacCycle = cycleBranches.map(branch => CONFIG.ZODIAC_BASE[branch]);
-
       StateManager.setState({ currentZodiac, zodiacCycle }, false);
       
-      // 生肖循环变化，重新初始化数据查询模块
+      // 重新初始化数据查询模块
       DataQuery._numToAttrMap = null;
       DataQuery._attrToNumMap = null;
       DataQuery.init();
@@ -2736,10 +2740,10 @@ const Render = {
     } catch(e) {
       console.error('生成生肖循环失败', e);
       Toast.show('生肖数据初始化失败');
-      const fallbackCycle = ['马','蛇','龙','兔','虎','牛','鼠','猪','狗','鸡','猴','羊'];
+      const fallbackCycle = CONFIG.ANALYSIS.ZODIAC_ALL;
       StateManager.setState({ currentZodiac: '马', zodiacCycle: fallbackCycle }, false);
       
-      // 生肖循环变化，重新初始化数据查询模块
+      // 重新初始化数据查询模块
       DataQuery._numToAttrMap = null;
       DataQuery._attrToNumMap = null;
       DataQuery.init();
@@ -3498,63 +3502,127 @@ const Business = {
   refreshHistory: async (silent = false) => {
     const historyList = document.getElementById('historyList');
     if(historyList && !silent) historyList.innerHTML = '<div style="padding:20px;text-align:center;">加载中...</div>';
-    
+
     try {
-      const year = new Date().getFullYear();
-      const res = await fetch(CONFIG.API.HISTORY + year);
-      const data = await res.json();
-      let rawData = data.data || [];
+      // 先检查缓存是否有效（未过期）
+      const cacheResult = Storage.loadHistoryCache();
+      let useCache = false;
+      let sortedData = [];
 
-      // 过滤无效数据
-      rawData = rawData.filter(item => {
-        const expect = item.expect || '';
-        const openCode = item.openCode || '';
-        return expect && openCode && openCode.split(',').length === 7;
-      });
+      if (cacheResult.data && !cacheResult.expired) {
+        // 缓存未过期，直接使用缓存
+        sortedData = cacheResult.data;
+        useCache = true;
+        console.log(`[历史数据] 使用缓存，数据量: ${sortedData.length}, 缓存时间: ${new Date(Storage.get(Storage.KEYS.HISTORY_CACHE_TIME, 0)).toLocaleString()}`);
+      }
 
-      // 去重并排序
-      const uniqueMap = new Map();
-      rawData.forEach(item => {
-        const expectNum = Number(item.expect || 0);
-        if(expectNum && !isNaN(expectNum)) {
-          uniqueMap.set(expectNum, item);
+      if (!useCache) {
+        // 缓存过期或不存在，从API获取数据
+        const year = new Date().getFullYear();
+        const res = await fetch(CONFIG.API.HISTORY + year);
+        const data = await res.json();
+        let rawData = data.data || [];
+
+        console.log(`[历史数据] API返回原始数据量: ${rawData.length}`);
+
+        // 过滤无效数据
+        rawData = rawData.filter(item => {
+          const expect = item.expect || '';
+          const openCode = item.openCode || '';
+          return expect && openCode && openCode.split(',').length === 7;
+        });
+
+        console.log(`[历史数据] 过滤后数据量: ${rawData.length}`);
+
+        // 数据量验证：检查是否合理
+        if (rawData.length < 50) {
+          console.warn(`[历史数据] 警告: API返回数据量太少(${rawData.length}条)，尝试使用缓存`);
+          // 数据量太少，尝试使用缓存
+          const fallbackCache = Storage.loadHistoryCache();
+          if (fallbackCache.data) {
+            sortedData = fallbackCache.data;
+            useCache = true;
+            console.log(`[历史数据] 使用缓存作为后备，数据量: ${sortedData.length}`);
+          }
         }
-      });
 
-      const sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
-        return Number(b.expect || 0) - Number(a.expect || 0);
-      });
+        // 只有在有合理数据量时才从API更新
+        if (!useCache || sortedData.length === 0) {
+          // 去重并排序
+          const uniqueMap = new Map();
+          rawData.forEach(item => {
+            const expectNum = Number(item.expect || 0);
+            if(expectNum && !isNaN(expectNum)) {
+              uniqueMap.set(expectNum, item);
+            }
+          });
+
+          sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
+            return Number(b.expect || 0) - Number(a.expect || 0);
+          });
+
+          console.log(`[历史数据] API数据去重后: ${sortedData.length}条`);
+
+          // 保存到缓存
+          Storage.saveHistoryCache(sortedData);
+        }
+      }
+
+      // 数据量验证：检查是否 >= 100
+      if (sortedData.length < 100) {
+        console.warn(`[历史数据] 警告: 当前数据量(${sortedData.length})少于100条，可能影响分析准确性`);
+      } else {
+        console.log(`[历史数据] 数据量验证通过: ${sortedData.length}条`);
+      }
 
       // 更新状态
       const newAnalysis = { ...StateManager._state.analysis, historyData: sortedData };
       StateManager.setState({ analysis: newAnalysis }, false);
-
-      // 保存到缓存
-      Storage.saveHistoryCache(sortedData);
 
       // 渲染
       Business.renderLatest(sortedData[0]);
       Business.renderHistory();
       Business.renderFullAnalysis();
       Business.renderZodiacAnalysis();
-      
+
       // 更新冷热号状态
       Business.updateHotColdStatus();
-      
+
       // 静默更新所有期数的预测历史
       Business.silentUpdateAllPredictionHistory();
       // 同时更新精选特码历史的开奖记录比较
       Business.updateSpecialHistoryComparison();
       // 重新渲染精选特码历史以显示最新比较结果
       Business.renderSpecialHistory();
-      
-      if(!silent) Toast.show('数据加载成功');
+
+      if(!silent) Toast.show(useCache ? '数据加载成功(缓存)' : '数据加载成功');
     } catch(e) {
       console.error('加载历史数据失败', e);
-      if(historyList && !silent) {
-        historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">数据加载失败，请刷新重试</div>';
+      // 加载失败，尝试使用缓存作为后备
+      const fallbackCache = Storage.loadHistoryCache();
+      if (fallbackCache.data && fallbackCache.data.length > 0) {
+        console.log(`[历史数据] API加载失败，使用缓存后备，数据量: ${fallbackCache.data.length}`);
+        const sortedData = fallbackCache.data;
+        const newAnalysis = { ...StateManager._state.analysis, historyData: sortedData };
+        StateManager.setState({ analysis: newAnalysis }, false);
+        Business.renderLatest(sortedData[0]);
+        Business.renderHistory();
+        Business.renderFullAnalysis();
+        Business.renderZodiacAnalysis();
+        Business.updateHotColdStatus();
+        Business.silentUpdateAllPredictionHistory();
+        Business.updateSpecialHistoryComparison();
+        Business.renderSpecialHistory();
+        if(historyList && !silent) {
+          historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--warning);">数据加载失败，已使用缓存</div>';
+        }
+        if(!silent) Toast.show('数据加载失败(已使用缓存)');
+      } else {
+        if(historyList && !silent) {
+          historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">数据加载失败，请刷新重试</div>';
+        }
+        if(!silent) Toast.show('数据加载失败');
       }
-      if(!silent) Toast.show('数据加载失败');
     }
     
     const loadMore = document.getElementById('loadMore');
@@ -3573,6 +3641,7 @@ const Business = {
     const zodArrRaw = (item.zodiac || ',,,,,,,,,,,,').split(',');
     const zodArr = zodArrRaw.map(z => CONFIG.ANALYSIS.ZODIAC_TRAD_TO_SIMP[z] || z);
     const te = Math.max(0, Number(codeArr[6]));
+    const zod = zodArr[6] || '-'; // 直接使用zodiac字符串第7个（真实开奖生肖）
     
     return {
       te,
@@ -3580,10 +3649,10 @@ const Business = {
       head: Math.floor(te / 10),
       wave: Business.getColor(te),
       colorName: Business.getColorName(te),
-      zod: zodArr[6] || '-',
+      zod: zod,
       odd: te % 2 === 1,
       big: te >= 25,
-      animal: CONFIG.ANALYSIS.HOME_ZODIAC.includes(zodArr[6]) ? '家禽' : '野兽',
+      animal: CONFIG.ANALYSIS.HOME_ZODIAC.includes(zod) ? '家禽' : '野兽',
       wuxing: Business.getWuxing(te),
       fullZodArr: zodArr
     };
@@ -4315,7 +4384,7 @@ const Business = {
     Object.values(zodMiss).forEach(m => { if(m > maxMiss) maxMiss = m; });
 
     // 3. 间隔规律分析
-    const zodiacOrder = ['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
+    const zodiacOrder = CONFIG.ANALYSIS.ZODIAC_ALL; // 使用配置文件中的生肖顺序
     const intervalStats = {};
     for(let i = 0; i < 12; i++) intervalStats[i] = 0;
     
@@ -4345,12 +4414,18 @@ const Business = {
       '土': ['金']
     };
 
-    // 生肖五行映射
-    const zodiacElement = {
-      '鼠': '水', '牛': '土', '虎': '木', '兔': '木',
-      '龙': '土', '蛇': '火', '马': '火', '羊': '土',
-      '猴': '金', '鸡': '金', '狗': '土', '猪': '水'
-    };
+    // 动态构建生肖五行映射（基于号码属性）
+    const zodiacElement = {};
+    // 查找每个生肖对应的第一个号码，然后获取其五行属性
+    CONFIG.ANALYSIS.ZODIAC_ALL.forEach(zod => {
+      for (let num = 1; num <= 49; num++) {
+        const zodForNum = DataQuery._getZodiacByNum(num);
+        if (zodForNum === zod) {
+          zodiacElement[zod] = Business.getWuxing(num);
+          break;
+        }
+      }
+    });
 
     // 计算每个生肖的综合分数
     CONFIG.ANALYSIS.ZODIAC_ALL.forEach(zod => {
@@ -6144,15 +6219,26 @@ const Business = {
         return;
       }
       
-      // 转换数据格式 - 直接传递生肖名称，与项目内一致
-      const formattedHistory = historyData.map(item => ({
-        period: parseInt(item.expect),
-        zodiac: item.zodiac  // 直接传递生肖名称字符串
-      }));
+      // 转换数据格式 - 正确处理zodiac字段
+      const formattedHistory = historyData.map(item => {
+        // zodiac字段是逗号分隔的字符串，取第7个元素（索引6）作为实际生肖
+        let zodiacName = item.zodiac;
+        if (zodiacName && zodiacName.includes(',')) {
+          const zodArr = zodiacName.split(',');
+          // 尝试使用转换映射
+          const simpleZodArr = zodArr.map(z => CONFIG.ANALYSIS.ZODIAC_TRAD_TO_SIMP[z] || z);
+          zodiacName = simpleZodArr[6] || zodArr[6];
+        }
+        return {
+          period: parseInt(item.expect),
+          zodiac: zodiacName
+        };
+      });
       
-      // 调用ML API
+      // 调用ML API - 使用固定的API端口5001
       console.log('开始调用ML API...');
-      const apiUrl = 'http://localhost:8000/api/predict';
+      const apiPort = '5001';
+      const apiUrl = `http://localhost:${apiPort}/api/predict`;
       console.log('API URL:', apiUrl);
       console.log('发送的历史数据:', formattedHistory);
       
@@ -6183,8 +6269,17 @@ const Business = {
         return;
       }
       
+      // 使用API返回的预测期号，如果没有则计算
+      let predictPeriod = result.predictPeriod || '';
+      if(!predictPeriod && historyData && historyData.length > 0) {
+        const latestPeriod = Math.max(...historyData.map(item => parseInt(item.expect)));
+        predictPeriod = String(latestPeriod + 1);
+      }
+      
+      console.log('使用的预测期号:', predictPeriod);
+      
       // 显示预测结果
-      Business.displayMLPredictionResult(result);
+      Business.displayMLPredictionResult(result, predictPeriod);
       
     } catch(error) {
       console.error('ML预测失败 - 完整错误:', error);
@@ -6208,10 +6303,11 @@ const Business = {
   /**
    * 生肖预测2.0 - 显示ML预测结果
    */
-  displayMLPredictionResult: (result) => {
+  displayMLPredictionResult: (result, predictPeriod) => {
     const resultContainer = document.getElementById('mlPredictionResult');
     const contentContainer = document.getElementById('mlPredictionContent');
     const timeContainer = document.getElementById('mlPredictionTime');
+    const periodContainer = document.getElementById('mlPredictionPeriod');
     
     if(!resultContainer || !contentContainer) return;
     
@@ -6221,6 +6317,12 @@ const Business = {
     // 更新时间
     const now = new Date();
     timeContainer.textContent = `预测时间: ${now.toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    
+    // 显示预测期号
+    if(periodContainer) {
+      const displayPeriod = predictPeriod || '待预测';
+      periodContainer.textContent = `🤖 ML模型预测结果 ${displayPeriod}`;
+    }
     
     // 生成结果HTML
     let html = '';
@@ -6279,7 +6381,7 @@ const Business = {
     contentContainer.innerHTML = html;
     
     // 保存ML预测历史
-    Business.saveMLPredictionHistory(result);
+    Business.saveMLPredictionHistory(result, predictPeriod);
     
     // 滚动到结果区域
     resultContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -6808,20 +6910,33 @@ const Business = {
   /**
    * 保存ML预测历史
    * @param {Object} result - ML预测结果
+   * @param {String} predictPeriod - 预测期号
    */
-  saveMLPredictionHistory: (result) => {
+  saveMLPredictionHistory: (result, predictPeriod) => {
     try {
       const history = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
       const now = new Date();
       
-      const state = StateManager._state;
-      let predictExpect = null;
-      if (state.analysis.historyData && state.analysis.historyData[0]) {
-        const currentExpect = state.analysis.historyData[0].expect;
-        if (currentExpect) {
-          predictExpect = String(Number(currentExpect) + 1);
+      // 使用传入的预测期号
+      let predictExpect = predictPeriod || null;
+      if (!predictExpect) {
+        const state = StateManager._state;
+        if (state.analysis.historyData && state.analysis.historyData[0]) {
+          const currentExpect = state.analysis.historyData[0].expect;
+          if (currentExpect) {
+            predictExpect = String(Number(currentExpect) + 1);
+          }
         }
       }
+      
+      // 转换数据格式：API格式 -> 历史记录格式
+      const formatPredictions = (predictions) => {
+        return (predictions || []).map(p => ({
+          zodiac: p.name,
+          probability: p.probability,
+          id: p.id
+        }));
+      };
       
       const newRecord = {
         id: now.getTime(),
@@ -6829,8 +6944,8 @@ const Business = {
         timestamp: now.getTime(),
         time: now.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         type: 'ml',
-        predictions: result.predictions || [],
-        top3: result.top3 || [],
+        predictions: formatPredictions(result.predictions),
+        top3: formatPredictions(result.top3),
         recommendation: result.recommendation || null,
         status: Storage.PREDICTION_STATUS.PENDING,
         actualZodiac: null,
@@ -6918,7 +7033,11 @@ const Business = {
           record.actualNumber = actual.number;
           
           if (record.predictions && record.predictions.length > 0) {
-            const isHit = record.predictions.some(p => p.name === actual.zodiac);
+            // 兼容两种格式：可能是p.name或p.zodiac
+            const isHit = record.predictions.some(p => 
+              (p.zodiac && p.zodiac === actual.zodiac) || 
+              (p.name && p.name === actual.zodiac)
+            );
             record.isHit = isHit;
             record.status = isHit ? Storage.PREDICTION_STATUS.HIT : Storage.PREDICTION_STATUS.MISS;
           } else {
@@ -7300,10 +7419,17 @@ const Business = {
         }
       });
 
-      const showCount = isExpanded ? history.length : Math.min(4, history.length);
-      const displayHistory = history.slice(0, showCount);
+      const seen = new Set();
+      const uniqueHistory = history.filter(item => {
+        if (item.expect && seen.has(item.expect)) return false;
+        if (item.expect) seen.add(item.expect);
+        return true;
+      });
 
-      if (history.length === 0) {
+      const showCount = isExpanded ? uniqueHistory.length : Math.min(4, uniqueHistory.length);
+      const displayHistory = uniqueHistory.slice(0, showCount);
+
+      if (uniqueHistory.length === 0) {
         historyListEl.innerHTML = '<div style="text-align:center;color:var(--sub-text);padding:20px;font-size:13px;">暂无ML预测历史</div>';
         if (toggleEl) toggleEl.style.display = 'none';
         return;
@@ -7316,7 +7442,11 @@ const Business = {
         let isMatch = false;
 
         if (actualZodiac && item.predictions) {
-          isMatch = item.predictions.some(p => p.name === actualZodiac);
+          // 兼容两种格式：p.name或p.zodiac
+          isMatch = item.predictions.some(p => 
+            (p.zodiac && p.zodiac === actualZodiac) || 
+            (p.name && p.name === actualZodiac)
+          );
         }
 
         const statusText = {
@@ -7332,9 +7462,10 @@ const Business = {
         };
 
         const predictions = (item.top3 || []).map((p, i) => {
-          const isMatchZodiac = actualZodiac && p.name === actualZodiac;
+          const zodiacName = p.name || p.zodiac;
+          const isMatchZodiac = actualZodiac && zodiacName === actualZodiac;
           const tagClass = isMatchZodiac ? 'history-tag hit' : 'history-tag';
-          return `<span class="${tagClass}" onclick="Business.showPredictionHistoryDetail(${idx}, 'ml')" style="cursor:pointer;">${p.name}</span>`;
+          return `<span class="${tagClass}" onclick="Business.showPredictionHistoryDetail(${idx}, 'ml')" style="cursor:pointer;">${zodiacName}</span>`;
         }).join('');
 
         const actualTag = actualZodiac 
@@ -7343,7 +7474,7 @@ const Business = {
 
         html += `
           <div class="special-history-item" data-index="${idx}" style="padding:12px;border-bottom:1px solid var(--border);background:var(--card);border-radius:8px;margin-bottom:10px;position:relative;overflow:hidden;">
-            <div class="special-history-delete" onclick="Business.deleteMLPredictionHistoryItem(${idx}, event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
+            <div class="special-history-delete" onclick="Business.deleteMLPredictionHistoryItem('${item.expect}', event)" style="position:absolute;right:0;top:0;bottom:0;width:80px;background:var(--danger);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform 0.3s ease;z-index:10;">
               <span style="font-size:14px;">删除</span>
             </div>
             <div class="special-history-content" style="transition:transform 0.3s ease;position:relative;z-index:5;background:var(--card);">
@@ -7398,15 +7529,16 @@ const Business = {
 
   /**
    * 删除单条ML预测历史记录
-   * @param {number} idx - 记录索引
+   * @param {string} expect - 记录期号
    */
-  deleteMLPredictionHistoryItem: (idx, evt) => {
+  deleteMLPredictionHistoryItem: (expect, evt) => {
     try {
       evt.stopPropagation();
       if (!confirm('确定删除该记录？')) return;
       const history = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
 
-      if (idx < 0 || idx >= history.length) {
+      const idx = history.findIndex(item => item.expect === expect);
+      if (idx === -1) {
         Toast.show('删除失败：记录不存在');
         return;
       }
@@ -10616,8 +10748,8 @@ const EventBinder = {
     };
     
     confirmBtn.onclick = () => {
-      // 查找对应的删除按钮并触发点击
-      const deleteBtn = target.querySelector('.special-history-delete');
+      const item = target.closest('.special-history-item');
+      const deleteBtn = item ? item.querySelector('.special-history-delete') : null;
       if(deleteBtn) {
         deleteBtn.click();
       }

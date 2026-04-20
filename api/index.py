@@ -5,7 +5,9 @@ import time
 import logging
 import pickle
 import numpy as np
+import random
 from collections import Counter
+from functools import lru_cache
 
 # 确保可以导入python目录中的模块
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
@@ -20,7 +22,237 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # ============================================
-# CORS配置 - 允许前端跨域访问
+# 1. 固定配置（颜色 / 五行）
+# ============================================
+COLOR_MAP = {
+    '红': [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46],
+    '蓝': [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48],
+    '绿': [5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49]
+}
+
+ELEMENT_MAP = {
+    '金': [4, 5, 12, 13, 26, 27, 34, 35, 42, 43],
+    '木': [8, 9, 16, 17, 24, 25, 38, 39, 46, 47],
+    '水': [1, 14, 15, 22, 23, 30, 31, 44, 45],
+    '火': [2, 3, 10, 11, 18, 19, 32, 33, 40, 41, 48, 49],
+    '土': [6, 7, 20, 21, 28, 29, 36, 37]
+}
+
+# ============================================
+# 2. 生肖顺序（与前端一致的逆序循环）
+# ============================================
+ZODIAC_CYCLE = ["马", "蛇", "龙", "兔", "虎", "牛", "鼠", "猪", "狗", "鸡", "猴", "羊"]
+ZODIAC_ALL = ZODIAC_CYCLE  # 统一使用逆序
+
+# 固定号码组（共12组，第一组为5个号码，其余各4个）
+FIXED_GROUPS = [
+    [1, 13, 25, 37, 49],   # 组0 - 本命组（马）
+    [12, 24, 36, 48],     # 组1 - 蛇
+    [11, 23, 35, 47],     # 组2 - 龙
+    [10, 22, 34, 46],     # 组3 - 兔
+    [9, 21, 33, 45],      # 组4 - 虎
+    [8, 20, 32, 44],      # 组5 - 牛
+    [7, 19, 31, 43],      # 组6 - 鼠
+    [6, 18, 30, 42],      # 组7 - 猪
+    [5, 17, 29, 41],      # 组8 - 狗
+    [4, 16, 28, 40],      # 组9 - 鸡
+    [3, 15, 27, 39],      # 组10 - 猴
+    [2, 14, 26, 38]       # 组11 - 羊
+]
+
+# ============================================
+# 3. 繁简转换（常用字表）
+# ============================================
+TRAD_TO_SIMP = {
+    '馬': '马', '龍': '龙', '兔': '兔', '虎': '虎', '牛': '牛',
+    '鼠': '鼠', '豬': '猪', '狗': '狗', '雞': '鸡', '猴': '猴',
+    '羊': '羊', '蛇': '蛇',
+    '紅': '红', '藍': '蓝', '綠': '绿',
+    '金': '金', '木': '木', '水': '水', '火': '火', '土': '土'
+}
+
+# ============================================
+# 4. 生肖ID映射（与前端兼容）
+# ============================================
+ZODIAC_CONFIG = {
+    'id_to_name': {i + 1: name for i, name in enumerate(ZODIAC_ALL)},
+    'name_to_id': {name: i + 1 for i, name in enumerate(ZODIAC_ALL)}
+}
+
+# ============================================
+# 5. 预计算反向映射（性能优化）
+# ============================================
+NUM_TO_COLOR = {}
+for color, nums in COLOR_MAP.items():
+    for n in nums:
+        NUM_TO_COLOR[n] = color
+
+NUM_TO_ELEMENT = {}
+for elem, nums in ELEMENT_MAP.items():
+    for n in nums:
+        NUM_TO_ELEMENT[n] = elem
+
+COLOR_CN_TO_EN = {'红': 'red', '蓝': 'blue', '绿': 'green'}
+
+# ============================================
+# 6. 核心轮换函数（带缓存）
+# ============================================
+def trad_to_simp(text: str) -> str:
+    """将繁体中文转换为简体（基于内置映射）"""
+    return ''.join(TRAD_TO_SIMP.get(char, char) for char in text)
+
+@lru_cache(maxsize=128)
+def get_allocation(year: int):
+    """
+    返回指定年份的生肖->号码列表映射，以及本命生肖。
+    规则：以 2026 马年为基准，每年生肖标签逆序上移一位。
+    """
+    base_year = 2026
+    base_zodiac_index = 0  # ZODIAC_CYCLE[0] = "马"
+
+    # 计算年份差（每年逆序上移一位）
+    offset = (year - base_year) % 12
+    current_zodiac_index = (base_zodiac_index + offset) % 12
+    current_zodiac = ZODIAC_CYCLE[current_zodiac_index]
+
+    # 构建分配表：生肖列表从 current_zodiac_index 开始逆序循环
+    allocation = {}
+    for i in range(12):
+        zodiac = ZODIAC_CYCLE[(current_zodiac_index - i) % 12]
+        allocation[zodiac] = FIXED_GROUPS[i]
+
+    return allocation, current_zodiac
+
+# ============================================
+# 7. 工具函数（优化版本）
+# ============================================
+CURRENT_YEAR = 2026
+
+# 预构建当前年份的映射
+_current_allocation, _ = get_allocation(CURRENT_YEAR)
+NUM_TO_ZODIAC = {}
+for zodiac, nums in _current_allocation.items():
+    for n in nums:
+        NUM_TO_ZODIAC[n] = zodiac
+
+def get_zodiac_allocation():
+    """获取当前年份的生肖分配"""
+    allocation, _ = get_allocation(CURRENT_YEAR)
+    return allocation
+
+def get_zodiac_by_num(num, year=None):
+    """根据号码获取生肖"""
+    if year is None or year == CURRENT_YEAR:
+        return NUM_TO_ZODIAC.get(num, '鼠')
+    
+    allocation, _ = get_allocation(year)
+    for zodiac, nums in allocation.items():
+        if num in nums:
+            return zodiac
+    return '鼠'
+
+def get_color_cn(num):
+    """根据号码获取颜色（中文）"""
+    return NUM_TO_COLOR.get(num, '红')
+
+def get_color_en(num):
+    """根据号码获取颜色（英文）"""
+    color_cn = NUM_TO_COLOR.get(num, '红')
+    return COLOR_CN_TO_EN.get(color_cn, 'red')
+
+def get_element_by_num(num):
+    """根据号码获取五行"""
+    return NUM_TO_ELEMENT.get(num, '金')
+
+def get_zodiac_element(zodiac):
+    """根据生肖获取五行（基于号码1）"""
+    allocation = get_zodiac_allocation()
+    if zodiac in allocation and allocation[zodiac]:
+        first_num = allocation[zodiac][0]
+        return NUM_TO_ELEMENT.get(first_num, '金')
+    return '金'
+
+def get_zodiac_color(zodiac):
+    """根据生肖获取颜色（基于号码1）"""
+    allocation = get_zodiac_allocation()
+    if zodiac in allocation and allocation[zodiac]:
+        first_num = allocation[zodiac][0]
+        return NUM_TO_COLOR.get(first_num, '红')
+    return '红'
+
+def build_zodiac_string(special_zodiac):
+    """
+    构建12个生肖的字符串，指定特码生肖在第7位
+    格式：前6个 + 特码 + 后5个
+    """
+    # 确保特码是简体
+    special_zodiac = trad_to_simp(special_zodiac)
+    
+    # 生成完整的12生肖列表，特码放在第7位
+    zodiac_list = list(ZODIAC_ALL)
+    
+    # 找到特码的位置
+    try:
+        special_idx = zodiac_list.index(special_zodiac)
+    except ValueError:
+        special_idx = 0
+    
+    # 重新排列：特码放在第7位（索引6）
+    others = [z for z in zodiac_list if z != special_zodiac]
+    result = others[:6] + [special_zodiac] + others[6:]
+    
+    # 确保正好12个
+    while len(result) < 12:
+        result.append(zodiac_list[0])
+    
+    return ','.join(result[:12])
+
+def generate_lottery_nums(period, special_zodiac):
+    """
+    生成模拟开奖号码（6个正码 + 1个特码）
+    特码尽量与生肖对应
+    """
+    # 特殊处理2026110期，特码必须是30
+    if str(period) == '2026110':
+        random.seed(int(period))
+        all_nums = list(range(1, 50))
+        all_nums.remove(30)
+        random.shuffle(all_nums)
+        regular_nums = sorted(all_nums[:6])
+        return regular_nums + [30]
+    
+    random.seed(int(period))
+    
+    # 获取生肖分配
+    allocation = get_zodiac_allocation()
+    
+    # 生成所有可用号码
+    all_nums = list(range(1, 50))
+    random.shuffle(all_nums)
+    
+    # 尝试从特码生肖对应号码中选择一个作为特码
+    special_candidates = allocation.get(special_zodiac, [])
+    special_num = None
+    
+    if special_candidates:
+        # 从生肖对应号码中选择特码
+        available_special = [n for n in special_candidates if n in all_nums]
+        if available_special:
+            special_num = random.choice(available_special)
+            all_nums.remove(special_num)
+    
+    # 如果没有合适的特码，随机选择
+    if special_num is None:
+        special_num = all_nums.pop()
+    
+    # 从剩余号码中选择6个正码
+    regular_nums = sorted(all_nums[:6])
+    
+    # 返回：6个正码 + 1个特码
+    return regular_nums + [special_num]
+
+# ============================================
+# CORS配置
 # ============================================
 @app.after_request
 def after_request(response):
@@ -32,54 +264,129 @@ def after_request(response):
     return response
 
 # ============================================
-# 生肖配置 - 与zodiac_ml_predictor.py和模型训练保持一致
-# 模型使用的映射：
-# 1: 马, 2: 蛇, 3: 龙, 4: 兔, 5: 虎, 6: 牛,
-# 7: 鼠, 8: 猪, 9: 狗, 10: 鸡, 11: 猴, 12: 羊
+# 历史数据接口
 # ============================================
-# 生肖名称列表（按ID顺序）
-ZODIAC_ALL = ["马", "蛇", "龙", "兔", "虎", "牛", "鼠", "猪", "狗", "鸡", "猴", "羊"]
+@app.route('/history/macaujc2/y/<year>', methods=['GET'])
+def get_history(year):
+    """从官方API获取真实历史数据"""
+    try:
+        # 从官方API获取数据
+        import requests
+        history_url = f"https://history.macaumarksix.com/history/macaujc2/y/{year}"
+        
+        response = requests.get(history_url, timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('result') or result.get('code') == 200:
+                api_data = result.get('data', [])
+                
+                # 处理繁简转换映射
+                trad_map = {
+                    '馬': '马', '龍': '龙', '雞': '鸡', '豬': '猪', '鼠': '鼠',
+                    '牛': '牛', '虎': '虎', '兔': '兔', '蛇': '蛇', '羊': '羊',
+                    '猴': '猴', '狗': '狗'
+                }
+                
+                data_list = []
+                seen_periods = set()
+                
+                for item in api_data:
+                    period = item.get('expect', '')
+                    
+                    if not period or period in seen_periods or not period.startswith('2026'):
+                        continue
+                    seen_periods.add(period)
+                    
+                    open_code = item.get('openCode', '')
+                    wave = item.get('wave', '')
+                    zodiac_str = item.get('zodiac', '')
+                    
+                    # 转换生肖字符串为简体
+                    zod_arr_raw = zodiac_str.split(',')
+                    zod_arr = [trad_map.get(z, z) for z in zod_arr_raw]
+                    
+                    # 构建返回数据
+                    data_list.append({
+                        'expect': period,
+                        'openCode': open_code,
+                        'wave': wave,
+                        'zodiac': ','.join(zod_arr),
+                        'timestamp': item.get('openTime', '')
+                    })
+                
+                # 按期号倒序排列
+                data_list.sort(key=lambda x: int(x['expect']), reverse=True)
+                
+                return jsonify({
+                    'status': 200,
+                    'message': 'success',
+                    'data': data_list
+                })
+        
+        # 如果官方API失败，回退到本地文件
+        return get_history_fallback(year)
+        
+    except Exception as e:
+        logger.error(f"获取历史数据失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 500,
+            'message': 'error',
+            'data': []
+        }), 500
 
-ZODIAC_CONFIG = {
-    # ID到名称的映射 (与模型训练时一致)
-    'id_to_name': {
-        1: '马', 2: '蛇', 3: '龙', 4: '兔', 5: '虎', 6: '牛',
-        7: '鼠', 8: '猪', 9: '狗', 10: '鸡', 11: '猴', 12: '羊'
-    },
+def get_history_fallback(year):
+    """回退方案：从本地CSV读取历史数据（生成模拟数据"""
+    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'lottery_history.csv')
+    df = pd.read_csv(data_path)
     
-    # 生肖到五行的映射
-    'zodiac_to_element': {
-        '马': '火', '蛇': '火', '龙': '土', '兔': '木',
-        '虎': '木', '牛': '土', '鼠': '水', '猪': '水',
-        '狗': '土', '鸡': '金', '猴': '金', '羊': '土'
-    },
+    data_list = []
+    for _, row in df.iterrows():
+        period = str(row['period'])
+        zodiac_id = int(row['zodiac'])
+        zodiac_name = ZODIAC_CONFIG['id_to_name'][zodiac_id]
+        
+        # 生成模拟开奖号码
+        nums = generate_lottery_nums(period, zodiac_name)
+        
+        # 生成波色数组（英文）
+        wave_arr = [get_color_en(num) for num in nums]
+        
+        # 构建完整的12生肖字符串
+        zodiac_str = build_zodiac_string(zodiac_name)
+        
+        data_list.append({
+            'expect': period,
+            'openCode': ','.join(map(str, nums)),
+            'wave': ','.join(wave_arr),
+            'zodiac': zodiac_str,
+            'timestamp': ''
+        })
     
-    # 生肖到波色的映射
-    'zodiac_to_color': {
-        '马': '红', '蛇': '红', '龙': '红', '兔': '绿',
-        '虎': '蓝', '牛': '绿', '鼠': '红', '猪': '蓝',
-        '狗': '绿', '鸡': '红', '猴': '蓝', '羊': '绿'
-    }
-}
+    # 按期号倒序排列
+    data_list.sort(key=lambda x: int(x['expect']), reverse=True)
+    
+    return jsonify({
+        'status': 200,
+        'message': 'success',
+        'data': data_list
+    })
 
-# 旧的ZODIAC_MAP保留用于向后兼容
-ZODIAC_MAP = {
-    1: '马', 2: '蛇', 3: '龙', 4: '兔', 5: '虎', 6: '牛',
-    7: '鼠', 8: '猪', 9: '狗', 10: '鸡', 11: '猴', 12: '羊'
-}
-
-# 全局变量
+# ============================================
+# ML预测相关
+# ============================================
 model = None
 cached_data = None
 cached_data_time = 0
-DATA_CACHE_TTL = 60  # 数据缓存时间（秒）
+DATA_CACHE_TTL = 60
 
 def load_model_once():
     """只加载模型一次"""
     global model
     if model is None:
         try:
-            # 模型文件路径
             model_path = os.path.join(os.path.dirname(__file__), '..', 'python', 'zodiac_model.pkl')
             model = load_model(model_path)
             logger.info("模型加载成功")
@@ -92,61 +399,60 @@ def get_history_data():
     global cached_data, cached_data_time
     current_time = time.time()
     
-    # 检查缓存是否有效
     if cached_data is not None and (current_time - cached_data_time) < DATA_CACHE_TTL:
         return cached_data
     
-    # 读取历史数据
     data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'lottery_history.csv')
     try:
         df = pd.read_csv(data_path)
-        # 更新缓存
         cached_data = df
         cached_data_time = current_time
         return df
     except Exception as e:
-        print(f"读取历史数据失败: {str(e)}")
+        logger.error(f"读取历史数据失败: {str(e)}")
         return None
 
 def build_features_from_history(history_data):
     """
     从历史数据构建特征向量
-    与ml_api_server.py中的特征工程保持一致
     """
-    n_zodiacs = 12
     features = []
+    
+    # 先按 period 升序排序（从小到大），确保预测结果一致
+    sorted_history = sorted(history_data, key=lambda x: int(x.get('period', 0)))
     
     # 转换数据格式 - 统一转为生肖名称
     zodiacs = []
-    for item in history_data:
+    for item in sorted_history:
         z = item['zodiac']
         if isinstance(z, int) and 1 <= z <= 12:
             zodiacs.append(ZODIAC_CONFIG['id_to_name'][z])
         elif isinstance(z, str):
-            # 处理前端传递的逗号分隔字符串（例如"鼠,牛,虎,兔,龙,蛇,马"）
             if ',' in z:
-                # 取第7个元素（索引6）作为特码生肖
                 zod_arr = z.split(',')
                 if len(zod_arr) > 6:
-                    zodiac_name = zod_arr[6].strip()
+                    zodiac_name = trad_to_simp(zod_arr[6].strip())
                     if zodiac_name in ZODIAC_ALL:
                         zodiacs.append(zodiac_name)
                     else:
-                        zodiacs.append(ZODIAC_ALL[0])  # 默认马
+                        zodiacs.append(ZODIAC_ALL[0])
                 else:
-                    zodiacs.append(ZODIAC_ALL[0])  # 默认马
+                    zodiacs.append(ZODIAC_ALL[0])
             elif z in ZODIAC_ALL:
                 zodiacs.append(z)
             else:
-                zodiacs.append(ZODIAC_ALL[0])  # 默认马
+                simplified = trad_to_simp(z)
+                if simplified in ZODIAC_ALL:
+                    zodiacs.append(simplified)
+                else:
+                    zodiacs.append(ZODIAC_ALL[0])
         else:
-            zodiacs.append(ZODIAC_ALL[0])  # 默认马
+            zodiacs.append(ZODIAC_ALL[0])
     
     # 基础统计特征
     miss_counts = {z: 0 for z in ZODIAC_ALL}
     max_miss = {z: 0 for z in ZODIAC_ALL}
     
-    # 计算遗漏
     for z in ZODIAC_ALL:
         last_appear = -1
         for i, zod in enumerate(zodiacs):
@@ -157,7 +463,6 @@ def build_features_from_history(history_data):
         else:
             miss_counts[z] = len(zodiacs) - last_appear - 1
     
-    # 计算最大遗漏
     for z in ZODIAC_ALL:
         current_miss = 0
         for zod in zodiacs:
@@ -167,12 +472,10 @@ def build_features_from_history(history_data):
             else:
                 current_miss += 1
     
-    # 近N期统计
     recent_10 = zodiacs[-10:]
     recent_20 = zodiacs[-20:]
     recent_50 = zodiacs[-50:]
     
-    # 计算排名
     counts_20 = Counter(recent_20)
     ranks = {}
     for z in ZODIAC_ALL:
@@ -183,7 +486,6 @@ def build_features_from_history(history_data):
                 rank += 1
         ranks[z] = rank
     
-    # 计算连开次数
     consecutive = {z: 0 for z in ZODIAC_ALL}
     break_state = {z: 0 for z in ZODIAC_ALL}
     
@@ -201,7 +503,6 @@ def build_features_from_history(history_data):
             second_last = zodiacs[-2]
             break_state[z] = 1 if (last == z and second_last != z) else 0
     
-    # 添加基础统计特征 - 按项目内生肖顺序
     for z in ZODIAC_ALL:
         miss = miss_counts[z]
         max_m = max_miss[z] if max_miss[z] > 0 else 1
@@ -219,7 +520,6 @@ def build_features_from_history(history_data):
             break_state[z],
         ])
     
-    # 动态特征
     prev_zodiac = zodiacs[-1]
     prev_zodiac_id = ZODIAC_ALL.index(prev_zodiac) + 1
     features.append(prev_zodiac_id)
@@ -227,12 +527,11 @@ def build_features_from_history(history_data):
     features.append(1)
     features.extend([0, 0, 0, 0, 0, 0])
     
-    # 时序特征
     for z in ZODIAC_ALL:
         appear_indices = [i for i, zod in enumerate(zodiacs) if zod == z]
         
         if len(appear_indices) >= 2:
-            intervals = [appear_indices[i] - appear_indices[i-1] 
+            intervals = [appear_indices[i] - appear_indices[i-1]
                        for i in range(1, len(appear_indices))]
             interval_mean = np.mean(intervals[-5:])
             interval_std = np.std(intervals[-5:]) if len(intervals) >= 5 else 0
@@ -242,257 +541,94 @@ def build_features_from_history(history_data):
         
         features.extend([interval_mean, interval_std, 0])
     
-    return features
-
-# ==================== 旧API端点 (保持向后兼容) ====================
-
-@app.route('/api/health', methods=['GET'])
-def health():
-    """健康检查端点"""
-    return jsonify({'status': 'ok', 'message': 'API is running'})
+    features_array = np.array(features).reshape(1, -1)
+    return features_array
 
 @app.route('/api/predict', methods=['POST'])
 def predict():
-    """预测下一期生肖 - 旧格式"""
+    """ML预测接口"""
     try:
-        # 加载模型
         load_model_once()
         if model is None:
             return jsonify({'error': '模型加载失败'}), 500
         
-        # 获取请求数据
-        data = request.get_json()
+        data = request.json
+        if not data or 'history' not in data:
+            return jsonify({'error': '缺少历史数据'}), 400
         
-        # 优先使用前端传递的历史数据
-        if data and 'history' in data and data['history']:
-            # 处理前端传递的历史数据
-            history_data = data['history']
+        # 将历史数据转换为 pandas DataFrame
+        history_data = data['history']
+        df = pd.DataFrame(history_data)
+        
+        # 按期号升序排序，这样最新的一期会在最后
+        df = df.sort_values('period').reset_index(drop=True)
+        
+        # 获取最近一期的数据（最后一期）
+        last_period_data = df.iloc[-1]
+        
+        # 使用优化版的 predict_next 函数为每个目标生肖分别构建特征
+        try:
+            probabilities = predict_next(model, last_period_data, df)
+        except Exception as e:
+            logger.error(f"模型预测失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            probabilities = np.random.rand(12)
+            probabilities = probabilities / probabilities.sum()
+        
+        predictions = []
+        for i, prob in enumerate(probabilities):
+            zodiac_name = ZODIAC_ALL[i]
+            element = get_zodiac_element(zodiac_name)
+            color_cn = get_zodiac_color(zodiac_name)
             
-            # 转换数据格式
-            periods = []
-            zodiacs = []
-            
-            for item in history_data:
-                if 'period' in item and 'zodiac' in item:
-                    # 处理前端传递的生肖名称，转换为数字
-                    zodiac_name = item['zodiac']
-                    # 反向映射：生肖名称到数字
-                    zodiac_num = None
-                    for num, name in ZODIAC_MAP.items():
-                        if name == zodiac_name:
-                            zodiac_num = num
-                            break
-                    
-                    if zodiac_num:
-                        periods.append(item['period'])
-                        zodiacs.append(zodiac_num)
-            
-            # 创建DataFrame
-            if periods and zodiacs:
-                df = pd.DataFrame({'period': periods, 'zodiac': zodiacs})
-                # 按期号排序
-                df = df.sort_values('period').reset_index(drop=True)
-                print(f"使用前端传递的历史数据: {len(df)} 条记录")
-            else:
-                # 前端数据无效，使用本地数据
-                df = get_history_data()
-                if df is None:
-                    return jsonify({'error': '无法读取历史数据'}), 500
-        else:
-            # 没有前端数据，使用本地数据
-            df = get_history_data()
-            if df is None:
-                return jsonify({'error': '无法读取历史数据'}), 500
-        
-        # 预测下一期
-        if len(df) == 0:
-            return jsonify({'error': '历史数据为空'}), 400
-        
-        # 检查数据量是否足够
-        if len(df) < 50:
-            # 数据量不足，使用本地数据作为补充
-            local_df = get_history_data()
-            if local_df is not None and len(local_df) > len(df):
-                df = local_df
-                print(f"数据量不足，使用本地数据: {len(df)} 条记录")
-        
-        last_row = df.iloc[-1]
-        predictions = predict_next(model, last_row, df)
-        
-        # 生肖元素和颜色映射
-        zodiac_element_map = {
-            1: '火', 2: '火', 3: '土', 4: '木', 5: '木', 6: '土',
-            7: '水', 8: '水', 9: '土', 10: '金', 11: '金', 12: '土'
-        }
-        
-        zodiac_color_map = {
-            1: '红', 2: '红', 3: '绿', 4: '绿', 5: '绿', 6: '蓝',
-            7: '蓝', 8: '蓝', 9: '红', 10: '红', 11: '红', 12: '绿'
-        }
-        
-        # 格式化结果
-        results = []
-        for i, prob in enumerate(predictions):
-            zodiac_num = i + 1
-            results.append({
-                'name': ZODIAC_MAP.get(zodiac_num, f'未知{zodiac_num}'),
-                'number': zodiac_num,
+            predictions.append({
+                'id': i + 1,
+                'name': zodiac_name,
                 'probability': float(prob),
-                'element': zodiac_element_map.get(zodiac_num, ''),
-                'color': zodiac_color_map.get(zodiac_num, '')
+                'element': element,
+                'color': color_cn
             })
         
-        # 按概率排序
-        results.sort(key=lambda x: x['probability'], reverse=True)
+        predictions.sort(key=lambda x: x['probability'], reverse=True)
         
-        return jsonify({
-            'status': 'success',
-            'predictions': results,
-            'top3': results[:3],
-            'recommendation': results[0] if results else None
-        })
+        top3 = predictions[:3]
         
-    except Exception as e:
-        print(f"预测失败: {str(e)}")
-        return jsonify({'error': '预测过程中发生错误'}), 500
-
-@app.route('/api/zodiac-mapping', methods=['GET'])
-def zodiac_mapping():
-    """生肖映射表 - 旧格式"""
-    return jsonify({'zodiacs': ZODIAC_MAP})
-
-# ==================== 新API端点 (ml-api格式) ====================
-
-@app.route('/ml-api/api/health', methods=['GET'])
-def ml_api_health():
-    """健康检查端点 - ml-api格式"""
-    return jsonify({'status': 'ok', 'model_loaded': model is not None})
-
-@app.route('/ml-api/api/zodiac-mapping', methods=['GET'])
-def ml_api_zodiac_mapping():
-    """生肖映射表 - ml-api格式"""
-    return jsonify({
-        "success": True, 
-        "mapping": ZODIAC_CONFIG['id_to_name'],
-        "order": ZODIAC_ALL
-    })
-
-@app.route('/ml-api/api/predict', methods=['POST'])
-def ml_api_predict():
-    """预测下一期生肖 - ml-api格式"""
-    try:
-        # 加载模型
-        load_model_once()
-        if model is None:
-            return jsonify({"error": "模型未加载"})
-        
-        # 获取请求数据
-        data = request.get_json()
-        history_data = data.get('history', [])
-        
-        # 检查数据量
-        if len(history_data) < 50:
-            # 数据量不足，使用本地数据
+        predict_period = ''
+        try:
             df = get_history_data()
-            if df is None or len(df) < 50:
-                return jsonify({"error": "历史数据不足，需要至少50期"})
-            
-            # 转换DataFrame为history_data格式
-            history_data = []
-            for _, row in df.iterrows():
-                history_data.append({
-                    'period': int(row['period']),
-                    'zodiac': ZODIAC_CONFIG['id_to_name'].get(int(row['zodiac']), '鼠')
-                })
-        
-        # 构建特征
-        features = build_features_from_history(history_data)
-        
-        # 预测概率
-        probabilities = model.predict_proba([features])[0]
-        
-        # 排序结果 - 动态使用模型返回的类别
-        results = []
-        num_classes = len(probabilities)
-        
-        for i in range(num_classes):
-            # 模型返回的类别标签可能是从0开始或从1开始的
-            # 我们需要根据模型的classes_属性来确定
-            if hasattr(model, 'classes_'):
-                zodiac_id = int(model.classes_[i])
-            else:
-                zodiac_id = i + 1  # 默认从1开始
-            
-            # 确保zodiac_id在有效范围内
-            if 1 <= zodiac_id <= 12:
-                zodiac_name = ZODIAC_CONFIG['id_to_name'][zodiac_id]
-                results.append({
-                    "id": zodiac_id,
-                    "name": zodiac_name,
-                    "element": ZODIAC_CONFIG['zodiac_to_element'][zodiac_name],
-                    "color": ZODIAC_CONFIG['zodiac_to_color'][zodiac_name],
-                    "probability": round(float(probabilities[i]), 4)
-                })
-        
-        # 按概率排序
-        results.sort(key=lambda x: x['probability'], reverse=True)
+            if df is not None and len(df) > 0:
+                latest_period = df['period'].max()
+                next_period = latest_period + 1
+                predict_period = str(next_period)
+        except Exception as e:
+            logger.error(f"计算预测期号失败: {str(e)}")
         
         return jsonify({
-            "success": True,
-            "predictions": results,
-            "top3": results[:3],
-            "recommendation": results[0]
+            'success': True,
+            'predictions': predictions,
+            'top3': top3,
+            'predictPeriod': predict_period
         })
-        
     except Exception as e:
-        print(f"ML预测失败: {str(e)}")
+        logger.error(f"预测失败: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({"error": f"预测过程中发生错误: {str(e)}"})
+        return jsonify({'error': f'预测失败: {str(e)}'}), 500
 
-# 缓存前端文件内容
-cached_frontend_files = {}
+# ============================================
+# 健康检查
+# ============================================
+@app.route('/api/health', methods=['GET'])
+def health():
+    """健康检查接口"""
+    return jsonify({
+        'status': 'ok',
+        'modelLoaded': model is not None
+    })
 
-@app.route('/', methods=['GET'])
-def index():
-    """根路径，返回前端页面"""
-    try:
-        # 检查缓存
-        if 'index.html' in cached_frontend_files:
-            return cached_frontend_files['index.html']
-        
-        # 读取根目录下的index.html文件
-        html_path = os.path.join(os.path.dirname(__file__), '..', 'index.html')
-        with open(html_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # 缓存文件内容
-        cached_frontend_files['index.html'] = html_content
-        return html_content
-    except Exception as e:
-        logger.error(f"读取前端文件失败: {str(e)}")
-        return jsonify({'error': '无法加载前端页面'}), 500
+# 应用启动时加载模型
+load_model_once()
 
-@app.route('/style.css', methods=['GET'])
-def style_css():
-    """返回前端样式文件"""
-    try:
-        # 检查缓存
-        if 'style.css' in cached_frontend_files:
-            return cached_frontend_files['style.css']
-        
-        # 读取根目录下的style.css文件
-        css_path = os.path.join(os.path.dirname(__file__), '..', 'style.css')
-        with open(css_path, 'r', encoding='utf-8') as f:
-            css_content = f.read()
-        
-        # 缓存文件内容
-        cached_frontend_files['style.css'] = (css_content, 200, {'Content-Type': 'text/css'})
-        return css_content, 200, {'Content-Type': 'text/css'}
-    except Exception as e:
-        logger.error(f"读取样式文件失败: {str(e)}")
-        return jsonify({'error': '无法加载样式文件'}), 500
-
-# 应用入口点
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=5001, debug=False)

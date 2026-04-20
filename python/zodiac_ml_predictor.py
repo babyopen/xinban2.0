@@ -15,49 +15,37 @@ import pickle
 import warnings
 warnings.filterwarnings('ignore')
 
-# 生肖映射配置
+# 生肖映射配置 (与后端api/index.py一致，使用逆序循环)
 ZODIAC_CONFIG = {
-    # 生肖ID到名称的映射
+    # 生肖ID到名称的映射 (1=马, 2=蛇, ..., 12=羊) - 逆序循环
     'id_to_name': {
         1: '马', 2: '蛇', 3: '龙', 4: '兔', 5: '虎', 6: '牛',
         7: '鼠', 8: '猪', 9: '狗', 10: '鸡', 11: '猴', 12: '羊'
     },
-    # 生肖到五行的映射
+    # 生肖名称到ID的映射
+    'name_to_id': {
+        '马': 1, '蛇': 2, '龙': 3, '兔': 4, '虎': 5, '牛': 6,
+        '鼠': 7, '猪': 8, '狗': 9, '鸡': 10, '猴': 11, '羊': 12
+    },
+    # 生肖到五行的映射（简化版）
     'zodiac_to_element': {
-        1: '火',   # 马
-        2: '火',   # 蛇
-        3: '土',   # 龙
-        4: '木',   # 兔
-        5: '木',   # 虎
-        6: '土',   # 牛
-        7: '水',   # 鼠
-        8: '水',   # 猪
-        9: '土',   # 狗
-        10: '金',  # 鸡
-        11: '金',  # 猴
-        12: '土'   # 羊
+        1: '火', 2: '土', 3: '土', 4: '木', 5: '木', 6: '土',
+        7: '水', 8: '土', 9: '金', 10: '金', 11: '金', 12: '土'
     },
-    # 生肖到波色的映射
+    # 生肖到波色的映射（保留用于显示）
     'zodiac_to_color': {
-        1: '红', 2: '红', 3: '红', 4: '绿', 5: '蓝', 6: '绿',
-        7: '红', 8: '蓝', 9: '绿', 10: '红', 11: '蓝', 12: '绿'
-    },
-    # 五行相生关系
-    'element_generate': {
-        '金': '水',
-        '水': '木',
-        '木': '火',
-        '火': '土',
-        '土': '金'
-    },
-    # 五行相克关系
-    'element_overcome': {
-        '金': '木',
-        '木': '土',
-        '土': '水',
-        '水': '火',
-        '火': '金'
+        1: '红', 2: '蓝', 3: '绿', 4: '绿', 5: '红', 6: '红',
+        7: '红', 8: '蓝', 9: '绿', 10: '蓝', 11: '蓝', 12: '绿'
     }
+}
+
+# 五行相生关系（0=克, 1=同, 2=生）
+WUXING_RELATION = {
+    ("火", "木"): 2, ("火", "土"): 1, ("火", "水"): 0, ("火", "金"): 0,
+    ("木", "火"): 0, ("木", "土"): 0, ("木", "水"): 2, ("木", "金"): 0,
+    ("土", "火"): 0, ("土", "木"): 2, ("土", "水"): 0, ("土", "金"): 0,
+    ("水", "火"): 0, ("水", "木"): 0, ("水", "土"): 2, ("水", "金"): 0,
+    ("金", "火"): 0, ("金", "木"): 0, ("金", "水"): 2, ("金", "土"): 0
 }
 
 
@@ -66,25 +54,22 @@ def get_element_relation(element1, element2):
     获取两个五行元素之间的关系
     返回: 0=相克, 1=相同, 2=相生
     """
-    if element1 == element2:
-        return 1  # 相同
-    elif ZODIAC_CONFIG['element_generate'].get(element1) == element2:
-        return 2  # 相生
-    else:
-        return 0  # 相克
+    if (element1, element2) in WUXING_RELATION:
+        return WUXING_RELATION[(element1, element2)]
+    return 1  # 默认返回相同
 
 
 def get_zodiac_attributes(zodiac_id):
     """
-    获取生肖的各种属性
+    获取生肖的各种属性（使用用户提供的简化版配置）
     """
-    # 单双
+    # 单双（奇数为“单”，偶数为“双”）
     odd_even = zodiac_id % 2  # 0=双, 1=单
     
-    # 大小 (1-6小, 7-12大)
+    # 大小划分：1-6小，7-12大
     big_small = 1 if zodiac_id >= 7 else 0  # 0=小, 1=大
     
-    # 区间 (1-4, 5-8, 9-12)
+    # 区间划分：1-4, 5-8, 9-12
     if zodiac_id <= 4:
         zone = 0
     elif zodiac_id <= 8:
@@ -92,11 +77,18 @@ def get_zodiac_attributes(zodiac_id):
     else:
         zone = 2
     
-    # 头数 (1-9为0, 10-12为1)
-    head = 1 if zodiac_id >= 10 else 0
+    # 头数：1-9→0，10-12→1
+    head = 0 if zodiac_id <= 9 else 1
     
-    # 尾数
-    tail = zodiac_id % 10
+    # 尾数：mod10，但10→0, 11→1, 12→2
+    if zodiac_id == 10:
+        tail = 0
+    elif zodiac_id == 11:
+        tail = 1
+    elif zodiac_id == 12:
+        tail = 2
+    else:
+        tail = zodiac_id
     
     return {
         'odd_even': odd_even,
@@ -486,7 +478,7 @@ def get_feature_importance(model, feature_names, top_n=20):
 
 def predict_next(model, last_period_data, all_history):
     """
-    预测下一期的生肖概率
+    预测下一期的生肖概率（优化版：为每个目标生肖分别构建特征）
     
     Args:
         model: 训练好的模型
@@ -496,14 +488,14 @@ def predict_next(model, last_period_data, all_history):
     Returns:
         probabilities: 12个生肖的概率
     """
-    # 构建特征（与build_features类似，但只构建一个样本）
-    features = []
     n_zodiacs = 12
+    probabilities = np.zeros(n_zodiacs)
     
     # 历史数据
     history = all_history
     idx = len(history)
     
+    # ========== 预计算：共享部分（只算1次） ==========
     # 基础统计特征
     miss_counts = {i: 0 for i in range(1, n_zodiacs + 1)}
     max_miss = {i: 0 for i in range(1, n_zodiacs + 1)}
@@ -558,33 +550,9 @@ def predict_next(model, last_period_data, all_history):
             second_last = history.iloc[-2]['zodiac']
             break_state[z] = 1 if (last == z and second_last != z) else 0
     
-    for z in range(1, n_zodiacs + 1):
-        miss = miss_counts[z]
-        max_m = max_miss[z] if max_miss[z] > 0 else 1
-        
-        features.extend([
-            miss,
-            miss / max_m,
-            (recent_10['zodiac'] == z).sum(),
-            (recent_20['zodiac'] == z).sum(),
-            (recent_50['zodiac'] == z).sum(),
-            (recent_10['zodiac'] == z).sum() / 10,
-            (recent_20['zodiac'] == z).sum() / 20,
-            ranks[z],
-            consecutive[z],
-            break_state[z],
-        ])
-    
-    # 动态特征
-    prev_zodiac = history.iloc[-1]['zodiac']
-    features.append(prev_zodiac)
-    features.append(0)  # 位置间隔（无法预知）
-    features.append(1)  # 五行关系（默认相同）
-    
-    prev_attr = get_zodiac_attributes(prev_zodiac)
-    features.extend([0, 0, 0, 0, 0, 0])  # 其他比较特征（无法预知）
-    
-    # 时序特征
+    # 预计算时序特征
+    interval_means = {}
+    interval_stds = {}
     for z in range(1, n_zodiacs + 1):
         appear_indices = []
         for i, row in history.iterrows():
@@ -600,18 +568,79 @@ def predict_next(model, last_period_data, all_history):
             interval_mean = 0
             interval_std = 0
         
-        features.extend([interval_mean, interval_std, 0])
+        interval_means[z] = interval_mean
+        interval_stds[z] = interval_std
     
-    X = np.array([features])
+    # precompute rank_change：预测时我们无法计算，但为了特征对齐，设为0
+    rank_changes = {z:0 for z in range(1, n_zodiacs +1)}
     
-    # 预测概率
-    probabilities = model.predict_proba(X)[0]
+    # ========== 为每个可能的目标生肖构建特征 ==========
+    prev_zodiac_name = history.iloc[-1]['zodiac']  # 例如 "牛"
+    prev_zodiac_id = ZODIAC_CONFIG['name_to_id'][prev_zodiac_name]  # 转换为ID: 6
+    prev_attr = get_zodiac_attributes(prev_zodiac_id)
     
-    # 确保有12个元素
-    if len(probabilities) < 12:
-        new_probs = np.zeros(12)
-        new_probs[:len(probabilities)] = probabilities
-        probabilities = new_probs
+    for target_z in range(1, n_zodiacs + 1):
+        features = []
+        
+        # ---------- 1. 基础统计特征（所有目标共享一样的值） ----------
+        for z in range(1, n_zodiacs + 1):
+            miss = miss_counts[z]
+            max_m = max_miss[z] if max_miss[z] > 0 else 1
+            
+            features.extend([
+                miss,
+                miss / max_m,
+                (recent_10['zodiac'] == z).sum(),
+                (recent_20['zodiac'] == z).sum(),
+                (recent_50['zodiac'] == z).sum(),
+                (recent_10['zodiac'] == z).sum() / 10,
+                (recent_20['zodiac'] == z).sum() / 20,
+                ranks[z],
+                consecutive[z],
+                break_state[z],
+            ])
+        
+        # ---------- 2. 动态特征（针对目标生肖计算真实值！） ----------
+        # 上期生肖
+        features.append(prev_zodiac_id)
+        
+        # 位置间隔（真实计算！）
+        position_gap = abs(target_z - prev_zodiac_id)
+        if position_gap > 6:
+            position_gap = 12 - position_gap
+        features.append(position_gap)
+        
+        # 五行关系（真实计算！）
+        prev_element = ZODIAC_CONFIG['zodiac_to_element'][prev_zodiac_id]
+        curr_element = ZODIAC_CONFIG['zodiac_to_element'][target_z]
+        element_relation = get_element_relation(prev_element, curr_element)
+        features.append(element_relation)
+        
+        # 其他属性比较（真实计算！）
+        curr_attr = get_zodiac_attributes(target_z)
+        features.extend([
+            1 if prev_attr['color'] == curr_attr['color'] else 0,
+            1 if prev_attr['odd_even'] == curr_attr['odd_even'] else 0,
+            1 if prev_attr['big_small'] == curr_attr['big_small'] else 0,
+            1 if prev_attr['zone'] == curr_attr['zone'] else 0,
+            1 if prev_attr['head'] == curr_attr['head'] else 0,
+            1 if prev_attr['tail'] == curr_attr['tail'] else 0,
+        ])
+        
+        # ---------- 3. 时序特征（共享预计算的值） ----------
+        for z in range(1, n_zodiacs + 1):
+            features.extend([interval_means[z], interval_stds[z], rank_changes[z]])
+        
+        # ---------- 4. 预测该目标生肖的概率 ----------
+        X = np.array([features])
+        proba = model.predict_proba(X)[0]
+        
+        # 获取该目标生肖对应的概率（注意标签是 0-11）
+        target_idx = target_z - 1
+        if target_idx < len(proba):
+            probabilities[target_idx] = proba[target_idx]
+        else:
+            probabilities[target_idx] = 0.0
     
     return probabilities
 
