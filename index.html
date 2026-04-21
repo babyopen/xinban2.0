@@ -1,5 +1,5 @@
 <!-- 
-  小摇筛选 v260421.06
+  小摇筛选 v260421.07
   代码结构说明：
   - CONFIG: 配置常量模块
   - Utils: 工具函数模块（节流、防抖、深拷贝等）
@@ -20,7 +20,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#007AFF">
-<title>小摇筛选 v260421.06</title>
+<title>小摇筛选 v260421.07</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,7 +35,7 @@
     <div class="top-card">
       <div class="top-title">
         <span>符合条件：<span id="resultCount" aria-live="polite">0</span> 个</span>
-        <span>v260421.06</span>
+        <span>v260421.07</span>
       </div>
     <div id="resultNums" class="top-nums" role="list"></div>
   </div>
@@ -531,7 +531,7 @@
       <div class="card-body">
         <div style="text-align:center; padding:20px 0;">
           <div style="font-size:18px; font-weight:600; margin-bottom:8px;">小摇筛选</div>
-          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.06</div>
+          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.07</div>
           <div style="color:var(--sub-text); font-size:12px; margin-top:16px;">仅供娱乐，非投注建议</div>
         </div>
       </div>
@@ -905,12 +905,12 @@
  * @enum {any}
  */
 const CONFIG = Object.freeze({
-  VERSION: 'V260421.06',
+  VERSION: 'V260421.07',
   DATA_VERSION: 1, // 数据版本号，用于后续数据迁移
   // API配置
   API: Object.freeze({
-    HISTORY: 'https://api.api68.com/macaujc2/history/json/',
-    OFFICIAL_HISTORY: 'https://api.api68.com/macaujc2/history/json/'
+    HISTORY: 'http://localhost:5000/history/macaujc2/y/',
+    OFFICIAL_HISTORY: 'https://history.macaumarksix.com/history/macaujc2/y/'
   }),
   // 动画配置
   TOAST_DURATION: 2000,
