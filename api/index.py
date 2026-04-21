@@ -19,7 +19,7 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../', static_url_path='')
 
 # ============================================
 # 1. 固定配置（颜色 / 五行）
@@ -626,6 +626,11 @@ def health():
         'status': 'ok',
         'modelLoaded': model is not None
     })
+
+# 根路由，返回index.html
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
 
 # 应用启动时加载模型
 load_model_once()
