@@ -294,7 +294,7 @@ def get_history(year):
                 for item in api_data:
                     period = item.get('expect', '')
                     
-                    if not period or period in seen_periods or not period.startswith('2026'):
+                    if not period or period in seen_periods or (not period.startswith('2025') and not period.startswith('2026')):
                         continue
                     seen_periods.add(period)
                     
@@ -318,6 +318,10 @@ def get_history(year):
                 # 按期号倒序排列
                 data_list.sort(key=lambda x: int(x['expect']), reverse=True)
                 
+                # 如果没有数据，回退到本地文件
+                if not data_list:
+                    return get_history_fallback(year)
+                
                 return jsonify({
                     'status': 200,
                     'message': 'success',
@@ -338,31 +342,31 @@ def get_history(year):
         }), 500
 
 def get_history_fallback(year):
-    """回退方案：从本地CSV读取历史数据（生成模拟数据"""
+    """回退方案：从本地CSV读取历史数据"""
     data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'lottery_history.csv')
     df = pd.read_csv(data_path)
     
     data_list = []
     for _, row in df.iterrows():
         period = str(row['period'])
-        zodiac_id = int(row['zodiac'])
-        zodiac_name = ZODIAC_CONFIG['id_to_name'][zodiac_id]
         
-        # 生成模拟开奖号码
-        nums = generate_lottery_nums(period, zodiac_name)
+        # 检查是否是指定年份的数据
+        if not period.startswith(year):
+            continue
         
-        # 生成波色数组（英文）
-        wave_arr = [get_color_en(num) for num in nums]
+        # 处理zodiac字段
+        zodiac = row.get('zodiac', '')
+        open_code = row.get('openCode', '')
+        wave = row.get('wave', '')
+        timestamp = row.get('timestamp', '')
         
-        # 构建完整的12生肖字符串
-        zodiac_str = build_zodiac_string(zodiac_name)
-        
+        # 构建返回数据
         data_list.append({
             'expect': period,
-            'openCode': ','.join(map(str, nums)),
-            'wave': ','.join(wave_arr),
-            'zodiac': zodiac_str,
-            'timestamp': ''
+            'openCode': open_code,
+            'wave': wave,
+            'zodiac': zodiac,
+            'timestamp': timestamp
         })
     
     # 按期号倒序排列
