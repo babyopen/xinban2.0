@@ -1,5 +1,5 @@
 <!-- 
-  小摇筛选 v260421.04
+  小摇筛选 v260421.05
   代码结构说明：
   - CONFIG: 配置常量模块
   - Utils: 工具函数模块（节流、防抖、深拷贝等）
@@ -20,7 +20,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#007AFF">
-<title>小摇筛选 v260421.04</title>
+<title>小摇筛选 v260421.05</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,7 +35,7 @@
     <div class="top-card">
       <div class="top-title">
         <span>符合条件：<span id="resultCount" aria-live="polite">0</span> 个</span>
-        <span>v260421.04</span>
+        <span>v260421.05</span>
       </div>
     <div id="resultNums" class="top-nums" role="list"></div>
   </div>
@@ -327,6 +327,9 @@
       <div class="card-header">
         <h2>精选生肖</h2>
         <div style="display:flex;gap:4px;align-items:center;">
+          <button class="btn-mini" data-action="toggleSelectedZodiacHistory" id="selectedZodiacHistoryToggle" style="font-size:11px;display:none;">
+            <span class="toggle-text">展开更多</span>
+          </button>
           <button class="btn-mini red" data-action="clearSelectedZodiacHistory" style="font-size:11px;">清空</button>
         </div>
       </div>
@@ -431,6 +434,9 @@
       <div class="card-header">
         <h2>特码热门TOP5历史</h2>
         <div style="display:flex;gap:4px;align-items:center;">
+          <button class="btn-mini" data-action="toggleHotNumbersHistory" id="hotNumbersHistoryToggle" style="font-size:11px;display:none;">
+            <span class="toggle-text">展开更多</span>
+          </button>
           <button class="btn-mini red" data-action="clearHotNumbersHistory" style="font-size:11px;">清空</button>
         </div>
       </div>
@@ -525,7 +531,7 @@
       <div class="card-body">
         <div style="text-align:center; padding:20px 0;">
           <div style="font-size:18px; font-weight:600; margin-bottom:8px;">小摇筛选</div>
-          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.04</div>
+          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.05</div>
           <div style="color:var(--sub-text); font-size:12px; margin-top:16px;">仅供娱乐，非投注建议</div>
         </div>
       </div>
@@ -899,7 +905,7 @@
  * @enum {any}
  */
 const CONFIG = Object.freeze({
-  VERSION: 'V260421.04',
+  VERSION: 'V260421.05',
   DATA_VERSION: 1, // 数据版本号，用于后续数据迁移
   // API配置
   API: Object.freeze({
@@ -6432,8 +6438,8 @@ const Business = {
         return false;
       });
       
-      // 确定要显示的记录数量
-      const showCount = isExpanded ? filteredHistory.length : Math.min(4, filteredHistory.length);
+      // 确定要显示的记录数量 - 默认只显示1条
+      const showCount = isExpanded ? filteredHistory.length : Math.min(1, filteredHistory.length);
       const displayHistory = filteredHistory.slice(0, showCount);
       
       if(filteredHistory.length === 0) {
@@ -6500,11 +6506,11 @@ const Business = {
       
       // 控制展开/折叠按钮的显示
       if(toggleEl) {
-        if(filteredHistory.length > 4) {
+        if(filteredHistory.length > 1) {
           toggleEl.style.display = 'block';
           const toggleBtn = toggleEl.querySelector('button');
           if(toggleBtn) {
-            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${filteredHistory.length - 4}条）`;
+            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${filteredHistory.length - 1}条）`;
           }
         } else {
           toggleEl.style.display = 'none';
@@ -7752,7 +7758,8 @@ const Business = {
         return true;
       });
 
-      const showCount = isExpanded ? uniqueHistory.length : Math.min(4, uniqueHistory.length);
+      // 确定要显示的记录数量 - 默认只显示1条
+      const showCount = isExpanded ? uniqueHistory.length : Math.min(1, uniqueHistory.length);
       const displayHistory = uniqueHistory.slice(0, showCount);
 
       if (uniqueHistory.length === 0) {
@@ -7824,11 +7831,11 @@ const Business = {
       historyListEl.innerHTML = html;
 
       if (toggleEl) {
-        if (history.length > 4) {
+        if (uniqueHistory.length > 1) {
           toggleEl.style.display = 'block';
           const toggleBtn = toggleEl.querySelector('button');
           if (toggleBtn) {
-            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${history.length - 4}条）`;
+            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${uniqueHistory.length - 1}条）`;
           }
         } else {
           toggleEl.style.display = 'none';
@@ -8746,9 +8753,9 @@ const Business = {
       // 使用辅助函数获取筛选后的历史记录
       const filteredHistory = Business.getFilteredSpecialHistory();
       
-      // 分页逻辑（使用已声明的state变量）
-      const pageSize = state.specialHistoryPageSize || 50;
-      const currentPage = state.specialHistoryPage || 1;
+      // 分页逻辑（使用已声明的state变量）- 默认只显示1条
+      const pageSize = isExpanded ? filteredHistory.length : 1;
+      const currentPage = 1;
       const totalPages = Math.ceil(filteredHistory.length / pageSize);
       const startIdx = (currentPage - 1) * pageSize;
       const endIdx = Math.min(startIdx + pageSize, filteredHistory.length);
@@ -8830,6 +8837,19 @@ const Business = {
       
       const paginationHtml = Utils.renderPagination(currentPage, totalPages, filteredHistory.length, 'goToSpecialHistoryPage');
       historyListEl.innerHTML = html + paginationHtml;
+      
+      // 控制展开/折叠按钮的显示
+      if(toggleEl) {
+        if(filteredHistory.length > 1) {
+          toggleEl.style.display = 'block';
+          const toggleBtn = toggleEl.querySelector('button');
+          if(toggleBtn) {
+            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${filteredHistory.length - 1}条）`;
+          }
+        } else {
+          toggleEl.style.display = 'none';
+        }
+      }
     } catch(e) {
       console.error('渲染精选特码历史失败', e);
     }
@@ -8857,12 +8877,14 @@ const Business = {
   },
   
   /**
-   * 切换精选特码历史的展开/折叠状态（保留用于兼容，但分页已废弃）
-   * @deprecated 使用分页代替
+   * 切换精选特码历史的展开/折叠状态
    */
   toggleSpecialHistory: () => {
     try {
-      // 现在使用分页，这个函数保留但不再使用
+      const state = StateManager._state;
+      const newExpanded = !state.specialHistoryExpanded;
+      StateManager.setState({ specialHistoryExpanded: newExpanded }, false);
+      Business.renderSpecialHistory();
     } catch(e) {
       console.error('切换精选特码历史展开状态失败', e);
     }
@@ -9688,18 +9710,22 @@ const Business = {
     try {
       const state = StateManager._state;
       const historyListEl = document.getElementById('selectedZodiacHistoryList');
+      const toggleEl = document.getElementById('selectedZodiacHistoryToggle');
       
       if(!historyListEl) return;
       
       const history = state.selectedZodiacHistory;
+      const isExpanded = state.selectedZodiacHistoryExpanded || false;
       
       if(!history || history.length === 0) {
         historyListEl.innerHTML = '<div style="text-align:center;color:var(--sub-text);padding:20px;font-size:13px;">暂无精选生肖历史</div>';
+        if(toggleEl) toggleEl.style.display = 'none';
         return;
       }
       
-      const pageSize = state.selectedZodiacHistoryPageSize || 50;
-      const currentPage = state.selectedZodiacHistoryPage || 1;
+      // 分页逻辑 - 默认只显示1条
+      const pageSize = isExpanded ? history.length : 1;
+      const currentPage = 1;
       const totalPages = Math.ceil(history.length / pageSize);
       const startIdx = (currentPage - 1) * pageSize;
       const endIdx = Math.min(startIdx + pageSize, history.length);
@@ -9746,8 +9772,35 @@ const Business = {
       
       const paginationHtml = Utils.renderPagination(currentPage, totalPages, history.length, 'goToSelectedZodiacHistoryPage');
       historyListEl.innerHTML = html + paginationHtml;
+      
+      // 控制展开/折叠按钮的显示
+      if(toggleEl) {
+        if(history.length > 1) {
+          toggleEl.style.display = 'block';
+          const toggleBtn = toggleEl;
+          if(toggleBtn) {
+            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${history.length - 1}条）`;
+          }
+        } else {
+          toggleEl.style.display = 'none';
+        }
+      }
     } catch(e) {
       console.error('渲染精选生肖历史失败', e);
+    }
+  },
+
+  /**
+   * 切换精选生肖历史的展开/折叠状态
+   */
+  toggleSelectedZodiacHistory: () => {
+    try {
+      const state = StateManager._state;
+      const newExpanded = !state.selectedZodiacHistoryExpanded;
+      StateManager.setState({ selectedZodiacHistoryExpanded: newExpanded }, false);
+      Business.renderSelectedZodiacHistory();
+    } catch(e) {
+      console.error('切换精选生肖历史展开状态失败', e);
     }
   },
 
@@ -10231,18 +10284,23 @@ const Business = {
     try {
       const state = StateManager._state;
       const historyListEl = document.getElementById('hotNumbersHistoryList');
+      const toggleEl = document.getElementById('hotNumbersHistoryToggle');
       
       if(!historyListEl) return;
       
       const history = state.hotNumbersHistory;
+      const isExpanded = state.hotNumbersHistoryExpanded || false;
       
       if(history.length === 0) {
         historyListEl.innerHTML = '<div style="text-align:center;color:var(--sub-text);padding:20px;font-size:13px;">暂无特码热门top5历史</div>';
+        if(toggleEl) toggleEl.style.display = 'none';
         return;
       }
       
-      const pageSize = state.hotNumbersHistoryPageSize || 50;
-      const currentPage = state.hotNumbersHistoryPage || 1;
+      // 分页逻辑 - 默认只显示1条
+      const pageSize = isExpanded ? history.length : 1;
+      const currentPage = 1;
+      const totalPages = Math.ceil(history.length / pageSize);
       const startIndex = (currentPage - 1) * pageSize;
       const endIndex = startIndex + pageSize;
       const pageData = history.slice(startIndex, endIndex);
@@ -10300,14 +10358,40 @@ const Business = {
       historyListEl.innerHTML = historyHtml;
       
       // 渲染分页
-      const totalPages = Math.ceil(history.length / pageSize);
       const paginationHtml = Utils.renderPagination(currentPage, totalPages, history.length, 'goToHotNumbersHistoryPage');
       const paginationEl = document.getElementById('hotNumbersHistoryPagination');
       if(paginationEl) {
         paginationEl.innerHTML = paginationHtml;
       }
+      
+      // 控制展开/折叠按钮的显示
+      if(toggleEl) {
+        if(history.length > 1) {
+          toggleEl.style.display = 'block';
+          const toggleBtn = toggleEl;
+          if(toggleBtn) {
+            toggleBtn.innerText = isExpanded ? '收起' : `展开更多（还有${history.length - 1}条）`;
+          }
+        } else {
+          toggleEl.style.display = 'none';
+        }
+      }
     } catch(e) {
       console.error('渲染特码热门top5历史失败', e);
+    }
+  },
+
+  /**
+   * 切换特码热门top5历史的展开/折叠状态
+   */
+  toggleHotNumbersHistory: () => {
+    try {
+      const state = StateManager._state;
+      const newExpanded = !state.hotNumbersHistoryExpanded;
+      StateManager.setState({ hotNumbersHistoryExpanded: newExpanded }, false);
+      Business.renderHotNumbersHistory();
+    } catch(e) {
+      console.error('切换特码热门top5历史展开状态失败', e);
     }
   },
 

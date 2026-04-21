@@ -1,0 +1,86 @@
+{
+  "last_fetch": "2026-04-21 08:36:13",
+  "new_count": 768,
+  "data": [
+    {
+      "period": "2024366",
+      "openCode": "17,43,25,45,21,24,06",
+      "wave": "green,green,blue,red,green,red,green",
+      "zodiac": "鼠,狗,龙,猴,猴,蛇,猪",
+      "timestamp": "2024-12-31 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024365",
+      "openCode": "05,36,06,40,17,13,30",
+      "wave": "green,blue,green,red,green,red,red",
+      "zodiac": "鼠,蛇,猪,牛,鼠,龙,猪",
+      "timestamp": "2024-12-30 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024364",
+      "openCode": "47,13,11,40,43,15,01",
+      "wave": "blue,red,green,red,green,blue,red",
+      "zodiac": "马,龙,马,牛,狗,虎,龙",
+      "timestamp": "2024-12-29 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024363",
+      "openCode": "36,42,32,01,05,16,04",
+      "wave": "blue,blue,green,red,green,green,blue",
+      "zodiac": "蛇,猪,鸡,龙,鼠,牛,牛",
+      "timestamp": "2024-12-28 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024362",
+      "openCode": "10,48,43,05,04,34,02",
+      "wave": "blue,blue,green,green,blue,red,red",
+      "zodiac": "羊,蛇,狗,鼠,牛,羊,兔",
+      "timestamp": "2024-12-27 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024361",
+      "openCode": "04,22,15,31,28,46,20",
+      "wave": "blue,green,blue,blue,green,red,blue",
+      "zodiac": "牛,羊,虎,狗,牛,羊,鸡",
+      "timestamp": "2024-12-26 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024360",
+      "openCode": "35,25,19,24,36,26,14",
+      "wave": "red,blue,red,red,blue,blue,blue",
+      "zodiac": "马,龙,狗,蛇,蛇,兔,兔",
+      "timestamp": "2024-12-25 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024359",
+      "openCode": "02,31,06,34,40,22,15",
+      "wave": "red,blue,green,red,red,green,blue",
+      "zodiac": "兔,狗,猪,羊,牛,羊,虎",
+      "timestamp": "2024-12-24 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024358",
+      "openCode": "16,18,19,22,03,05,21",
+      "wave": "green,red,red,green,blue,green,green",
+      "zodiac": "牛,猪,狗,羊,虎,鼠,猴",
+      "timestamp": "2024-12-23 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    },
+    {
+      "period": "2024357",
+      "openCode": "37,07,31,20,16,26,09",
+      "wave": "blue,red,blue,blue,green,blue,blue",
+      "zodiac": "龙,狗,狗,鸡,牛,兔,猴",
+      "timestamp": "2024-12-22 21:32:32",
+      "fetch_time": "2026-04-21 08:36:10"
+    }
+  ]
+}
