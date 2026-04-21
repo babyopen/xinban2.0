@@ -3475,10 +3475,10 @@ const Business = {
             }
             
             // 转换为API返回的格式
-            if (item.period && item.openCode) {
+            if (item.period) {
               data.push({
                 expect: item.period,
-                openCode: item.openCode,
+                openCode: item.openCode || '',
                 zodiac: item.zodiac || '',
                 date: item.timestamp || '',
                 time: item.timestamp || ''
