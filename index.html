@@ -1,5 +1,5 @@
 <!-- 
-  小摇筛选 v260421.05
+  小摇筛选 v260421.06
   代码结构说明：
   - CONFIG: 配置常量模块
   - Utils: 工具函数模块（节流、防抖、深拷贝等）
@@ -20,7 +20,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#007AFF">
-<title>小摇筛选 v260421.05</title>
+<title>小摇筛选 v260421.06</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,7 +35,7 @@
     <div class="top-card">
       <div class="top-title">
         <span>符合条件：<span id="resultCount" aria-live="polite">0</span> 个</span>
-        <span>v260421.05</span>
+        <span>v260421.06</span>
       </div>
     <div id="resultNums" class="top-nums" role="list"></div>
   </div>
@@ -531,7 +531,7 @@
       <div class="card-body">
         <div style="text-align:center; padding:20px 0;">
           <div style="font-size:18px; font-weight:600; margin-bottom:8px;">小摇筛选</div>
-          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.05</div>
+          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.06</div>
           <div style="color:var(--sub-text); font-size:12px; margin-top:16px;">仅供娱乐，非投注建议</div>
         </div>
       </div>
@@ -905,11 +905,12 @@
  * @enum {any}
  */
 const CONFIG = Object.freeze({
-  VERSION: 'V260421.05',
+  VERSION: 'V260421.06',
   DATA_VERSION: 1, // 数据版本号，用于后续数据迁移
   // API配置
   API: Object.freeze({
-    HISTORY: 'http://localhost:5001/history/macaujc2/y/'
+    HISTORY: 'https://api.api68.com/macaujc2/history/json/',
+    OFFICIAL_HISTORY: 'https://api.api68.com/macaujc2/history/json/'
   }),
   // 动画配置
   TOAST_DURATION: 2000,
@@ -3442,60 +3443,197 @@ const Business = {
   },
 
   /**
+   * 加载本地历史数据
+   * @returns {Array} 历史数据数组
+   */
+  loadLocalHistoryData: () => {
+    try {
+      // 尝试加载本地CSV数据文件
+      // 由于浏览器安全限制，我们不能直接读取本地文件
+      // 但可以通过fetch请求本地文件
+      const localDataUrl = 'data/lottery_history.csv';
+      
+      // 同步请求本地数据
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', localDataUrl, false);
+      xhr.send();
+      
+      if (xhr.status === 200) {
+        const csvData = xhr.responseText;
+        const lines = csvData.split('\n');
+        const headers = lines[0].split(',');
+        const data = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line) {
+            const values = line.split(',');
+            const item = {};
+            
+            for (let j = 0; j < headers.length; j++) {
+              item[headers[j]] = values[j];
+            }
+            
+            // 转换为API返回的格式
+            if (item.expect && item.openCode) {
+              data.push({
+                expect: item.expect,
+                openCode: item.openCode,
+                zodiac: item.zodiac || '',
+                date: item.date || '',
+                time: item.time || ''
+              });
+            }
+          }
+        }
+        
+        // 排序（倒序）
+        data.sort((a, b) => {
+          return Number(b.expect || 0) - Number(a.expect || 0);
+        });
+        
+        // 保存到缓存
+        Storage.saveHistoryCache(data);
+        
+        return data;
+      }
+      
+      return [];
+    } catch (e) {
+      console.error('加载本地数据失败', e);
+      return [];
+    }
+  },
+
+  /**
    * 静默刷新历史数据（不显示加载状态）
    */
   silentRefreshHistory: async () => {
     try {
-      const year = new Date().getFullYear();
-      const res = await fetch(CONFIG.API.HISTORY + year);
-      const data = await res.json();
-      let rawData = data.data || [];
-
-      // 过滤无效数据
-      rawData = rawData.filter(item => {
-        const expect = item.expect || '';
-        const openCode = item.openCode || '';
-        return expect && openCode && openCode.split(',').length === 7;
-      });
-
-      // 去重并排序
-      const uniqueMap = new Map();
-      rawData.forEach(item => {
-        const expectNum = Number(item.expect || 0);
-        if(expectNum && !isNaN(expectNum)) {
-          uniqueMap.set(expectNum, item);
+      // 从官方API获取数据
+      try {
+        console.log('[历史数据] 尝试从官方API获取数据');
+        const year = new Date().getFullYear();
+        const res = await fetch(CONFIG.API.OFFICIAL_HISTORY + year);
+        
+        if (!res.ok) {
+          throw new Error(`API请求失败: ${res.status}`);
         }
-      });
+        
+        const data = await res.json();
+        let rawData = data.data || [];
 
-      const sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
-        return Number(b.expect || 0) - Number(a.expect || 0);
-      });
+        console.log(`[历史数据] 官方API返回原始数据量: ${rawData.length}`);
 
-      // 更新状态
-      const newAnalysis = { 
-        ...StateManager._state.analysis, 
-        historyData: sortedData 
-      };
-      StateManager.setState({ analysis: newAnalysis }, false);
+        // 过滤无效数据
+        rawData = rawData.filter(item => {
+          const expect = item.expect || '';
+          const openCode = item.openCode || '';
+          return expect && openCode && openCode.split(',').length === 7;
+        });
 
-      // 保存到缓存
-      Storage.saveHistoryCache(sortedData);
+        console.log(`[历史数据] 过滤后数据量: ${rawData.length}`);
 
-      // 渲染
-      Business.renderLatest(sortedData[0]);
-      Business.renderHistory();
-      Business.renderFullAnalysis();
-      Business.renderZodiacAnalysis();
-      Business.updateHotColdStatus();
-      
-      // 静默更新所有期数的预测历史
-      Business.silentUpdateAllPredictionHistory();
-      // 同时更新精选特码历史的开奖记录比较
-      Business.updateSpecialHistoryComparison();
-      // 重新渲染精选特码历史以显示最新比较结果
-      Business.renderSpecialHistory();
-      
-      // 数据已静默刷新
+        // 去重并排序
+        const uniqueMap = new Map();
+        rawData.forEach(item => {
+          const expectNum = Number(item.expect || 0);
+          if(expectNum && !isNaN(expectNum)) {
+            uniqueMap.set(expectNum, item);
+          }
+        });
+
+        const sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
+          return Number(b.expect || 0) - Number(a.expect || 0);
+        });
+
+        console.log(`[历史数据] API数据去重后: ${sortedData.length}条`);
+
+        // 保存到缓存
+        Storage.saveHistoryCache(sortedData);
+
+        // 更新状态
+        const newAnalysis = { ...StateManager._state.analysis, historyData: sortedData };
+        StateManager.setState({ analysis: newAnalysis }, false);
+
+        // 渲染
+        Business.renderLatest(sortedData[0]);
+        Business.renderHistory();
+        Business.renderFullAnalysis();
+        Business.renderZodiacAnalysis();
+        Business.updateHotColdStatus();
+        
+        // 静默更新所有期数的预测历史
+        Business.silentUpdateAllPredictionHistory();
+        // 同时更新精选特码历史的开奖记录比较
+        Business.updateSpecialHistoryComparison();
+        // 重新渲染精选特码历史以显示最新比较结果
+        Business.renderSpecialHistory();
+        
+        // 数据已静默刷新
+      } catch (apiError) {
+        console.error('官方API请求失败', apiError);
+        // 尝试使用本地后端API
+        try {
+          console.log('[历史数据] 尝试从本地后端API获取数据');
+          const year = new Date().getFullYear();
+          const res = await fetch(CONFIG.API.HISTORY + year);
+          const data = await res.json();
+          let rawData = data.data || [];
+
+          console.log(`[历史数据] 本地后端API返回原始数据量: ${rawData.length}`);
+
+          // 过滤无效数据
+          rawData = rawData.filter(item => {
+            const expect = item.expect || '';
+            const openCode = item.openCode || '';
+            return expect && openCode && openCode.split(',').length === 7;
+          });
+
+          console.log(`[历史数据] 过滤后数据量: ${rawData.length}`);
+
+          // 去重并排序
+          const uniqueMap = new Map();
+          rawData.forEach(item => {
+            const expectNum = Number(item.expect || 0);
+            if(expectNum && !isNaN(expectNum)) {
+              uniqueMap.set(expectNum, item);
+            }
+          });
+
+          const sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
+            return Number(b.expect || 0) - Number(a.expect || 0);
+          });
+
+          console.log(`[历史数据] API数据去重后: ${sortedData.length}条`);
+
+          // 保存到缓存
+          Storage.saveHistoryCache(sortedData);
+
+          // 更新状态
+          const newAnalysis = { ...StateManager._state.analysis, historyData: sortedData };
+          StateManager.setState({ analysis: newAnalysis }, false);
+
+          // 渲染
+          Business.renderLatest(sortedData[0]);
+          Business.renderHistory();
+          Business.renderFullAnalysis();
+          Business.renderZodiacAnalysis();
+          Business.updateHotColdStatus();
+          
+          // 静默更新所有期数的预测历史
+          Business.silentUpdateAllPredictionHistory();
+          // 同时更新精选特码历史的开奖记录比较
+          Business.updateSpecialHistoryComparison();
+          // 重新渲染精选特码历史以显示最新比较结果
+          Business.renderSpecialHistory();
+          
+          // 数据已静默刷新
+        } catch (localApiError) {
+          console.error('本地后端API请求失败', localApiError);
+          // 静默刷新失败，不做任何处理
+        }
+      }
     } catch(e) {
       console.error('静默刷新失败', e);
     }
@@ -3523,54 +3661,129 @@ const Business = {
       }
 
       if (!useCache) {
-        // 缓存过期或不存在，从API获取数据
-        const year = new Date().getFullYear();
-        const res = await fetch(CONFIG.API.HISTORY + year);
-        const data = await res.json();
-        let rawData = data.data || [];
-
-        console.log(`[历史数据] API返回原始数据量: ${rawData.length}`);
-
-        // 过滤无效数据
-        rawData = rawData.filter(item => {
-          const expect = item.expect || '';
-          const openCode = item.openCode || '';
-          return expect && openCode && openCode.split(',').length === 7;
-        });
-
-        console.log(`[历史数据] 过滤后数据量: ${rawData.length}`);
-
-        // 数据量验证：检查是否合理
-        if (rawData.length < 50) {
-          console.warn(`[历史数据] 警告: API返回数据量太少(${rawData.length}条)，尝试使用缓存`);
-          // 数据量太少，尝试使用缓存
-          const fallbackCache = Storage.loadHistoryCache();
-          if (fallbackCache.data) {
-            sortedData = fallbackCache.data;
-            useCache = true;
-            console.log(`[历史数据] 使用缓存作为后备，数据量: ${sortedData.length}`);
+        // 缓存过期或不存在，从官方API获取数据
+        try {
+          console.log('[历史数据] 尝试从官方API获取数据');
+          const year = new Date().getFullYear();
+          // 官方API格式：https://api.api68.com/macaujc2/history/json/2026
+          const res = await fetch(CONFIG.API.OFFICIAL_HISTORY + year);
+          
+          if (!res.ok) {
+            throw new Error(`API请求失败: ${res.status}`);
           }
-        }
+          
+          const data = await res.json();
+          let rawData = data.data || [];
 
-        // 只有在有合理数据量时才从API更新
-        if (!useCache || sortedData.length === 0) {
-          // 去重并排序
-          const uniqueMap = new Map();
-          rawData.forEach(item => {
-            const expectNum = Number(item.expect || 0);
-            if(expectNum && !isNaN(expectNum)) {
-              uniqueMap.set(expectNum, item);
+          console.log(`[历史数据] 官方API返回原始数据量: ${rawData.length}`);
+
+          // 过滤无效数据
+          rawData = rawData.filter(item => {
+            const expect = item.expect || '';
+            const openCode = item.openCode || '';
+            return expect && openCode && openCode.split(',').length === 7;
+          });
+
+          console.log(`[历史数据] 过滤后数据量: ${rawData.length}`);
+
+          // 数据量验证：检查是否合理
+          if (rawData.length < 50) {
+            console.warn(`[历史数据] 警告: API返回数据量太少(${rawData.length}条)，尝试使用缓存`);
+            // 数据量太少，尝试使用缓存
+            const fallbackCache = Storage.loadHistoryCache();
+            if (fallbackCache.data) {
+              sortedData = fallbackCache.data;
+              useCache = true;
+              console.log(`[历史数据] 使用缓存作为后备，数据量: ${sortedData.length}`);
             }
-          });
+          }
 
-          sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
-            return Number(b.expect || 0) - Number(a.expect || 0);
-          });
+          // 只有在有合理数据量时才从API更新
+          if (!useCache || sortedData.length === 0) {
+            // 去重并排序
+            const uniqueMap = new Map();
+            rawData.forEach(item => {
+              const expectNum = Number(item.expect || 0);
+              if(expectNum && !isNaN(expectNum)) {
+                uniqueMap.set(expectNum, item);
+              }
+            });
 
-          console.log(`[历史数据] API数据去重后: ${sortedData.length}条`);
+            sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
+              return Number(b.expect || 0) - Number(a.expect || 0);
+            });
 
-          // 保存到缓存
-          Storage.saveHistoryCache(sortedData);
+            console.log(`[历史数据] API数据去重后: ${sortedData.length}条`);
+
+            // 保存到缓存
+            Storage.saveHistoryCache(sortedData);
+          }
+        } catch (apiError) {
+          console.error('官方API请求失败', apiError);
+          // 尝试使用本地后端API
+          try {
+            console.log('[历史数据] 尝试从本地后端API获取数据');
+            const year = new Date().getFullYear();
+            const res = await fetch(CONFIG.API.HISTORY + year);
+            const data = await res.json();
+            let rawData = data.data || [];
+
+            console.log(`[历史数据] 本地后端API返回原始数据量: ${rawData.length}`);
+
+            // 过滤无效数据
+            rawData = rawData.filter(item => {
+              const expect = item.expect || '';
+              const openCode = item.openCode || '';
+              return expect && openCode && openCode.split(',').length === 7;
+            });
+
+            console.log(`[历史数据] 过滤后数据量: ${rawData.length}`);
+
+            // 数据量验证：检查是否合理
+            if (rawData.length < 50) {
+              console.warn(`[历史数据] 警告: API返回数据量太少(${rawData.length}条)，尝试使用缓存`);
+              // 数据量太少，尝试使用缓存
+              const fallbackCache = Storage.loadHistoryCache();
+              if (fallbackCache.data) {
+                sortedData = fallbackCache.data;
+                useCache = true;
+                console.log(`[历史数据] 使用缓存作为后备，数据量: ${sortedData.length}`);
+              }
+            }
+
+            // 只有在有合理数据量时才从API更新
+            if (!useCache || sortedData.length === 0) {
+              // 去重并排序
+              const uniqueMap = new Map();
+              rawData.forEach(item => {
+                const expectNum = Number(item.expect || 0);
+                if(expectNum && !isNaN(expectNum)) {
+                  uniqueMap.set(expectNum, item);
+                }
+              });
+
+              sortedData = Array.from(uniqueMap.values()).sort((a, b) => {
+                return Number(b.expect || 0) - Number(a.expect || 0);
+              });
+
+              console.log(`[历史数据] API数据去重后: ${sortedData.length}条`);
+
+              // 保存到缓存
+              Storage.saveHistoryCache(sortedData);
+            }
+          } catch (localApiError) {
+            console.error('本地后端API请求失败', localApiError);
+            // 尝试使用本地数据文件
+            console.log('[历史数据] 尝试加载本地数据文件');
+            const localData = Business.loadLocalHistoryData();
+            if (localData && localData.length > 0) {
+              console.log(`[历史数据] 本地数据加载成功，数据量: ${localData.length}`);
+              sortedData = localData;
+              useCache = true;
+            } else {
+              throw new Error('所有数据源都失败');
+            }
+          }
         }
       }
 
@@ -3624,10 +3837,40 @@ const Business = {
         }
         if(!silent) Toast.show('数据加载失败(已使用缓存)');
       } else {
-        if(historyList && !silent) {
-          historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">数据加载失败，请刷新重试</div>';
+        // 缓存也不存在，尝试加载本地数据文件
+        try {
+          console.log('[历史数据] 尝试加载本地数据文件');
+          const localData = Business.loadLocalHistoryData();
+          if (localData && localData.length > 0) {
+            console.log(`[历史数据] 本地数据加载成功，数据量: ${localData.length}`);
+            const sortedData = localData;
+            const newAnalysis = { ...StateManager._state.analysis, historyData: sortedData };
+            StateManager.setState({ analysis: newAnalysis }, false);
+            Business.renderLatest(sortedData[0]);
+            Business.renderHistory();
+            Business.renderFullAnalysis();
+            Business.renderZodiacAnalysis();
+            Business.updateHotColdStatus();
+            Business.silentUpdateAllPredictionHistory();
+            Business.updateSpecialHistoryComparison();
+            Business.renderSpecialHistory();
+            if(historyList && !silent) {
+              historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--info);">已使用本地数据</div>';
+            }
+            if(!silent) Toast.show('已使用本地数据');
+          } else {
+            if(historyList && !silent) {
+              historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">数据加载失败，请刷新重试</div>';
+            }
+            if(!silent) Toast.show('数据加载失败');
+          }
+        } catch (localError) {
+          console.error('加载本地数据失败', localError);
+          if(historyList && !silent) {
+            historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">数据加载失败，请刷新重试</div>';
+          }
+          if(!silent) Toast.show('数据加载失败');
         }
-        if(!silent) Toast.show('数据加载失败');
       }
     }
     
