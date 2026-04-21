@@ -6485,10 +6485,9 @@ const Business = {
         };
       });
       
-      // 调用ML API - 使用固定的API端口5001
+      // 调用ML API - 使用相对路径
       console.log('开始调用ML API...');
-      const apiPort = '5001';
-      const apiUrl = `http://localhost:${apiPort}/api/predict`;
+      const apiUrl = '/api/predict';
       console.log('API URL:', apiUrl);
       console.log('发送的历史数据:', formattedHistory);
       
@@ -6497,8 +6496,7 @@ const Business = {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({history: formattedHistory}),
-        mode: 'cors'  // 明确指定CORS模式
+        body: JSON.stringify({history: formattedHistory})
       });
       
       console.log('API响应状态:', response.status, response.statusText);
