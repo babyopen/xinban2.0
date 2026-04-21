@@ -1,5 +1,5 @@
 <!-- 
-  小摇筛选 v260421.07
+  小摇筛选 v260421.08
   代码结构说明：
   - CONFIG: 配置常量模块
   - Utils: 工具函数模块（节流、防抖、深拷贝等）
@@ -20,7 +20,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#007AFF">
-<title>小摇筛选 v260421.07</title>
+<title>小摇筛选 v260421.08</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,7 +35,7 @@
     <div class="top-card">
       <div class="top-title">
         <span>符合条件：<span id="resultCount" aria-live="polite">0</span> 个</span>
-        <span>v260421.07</span>
+        <span>v260421.08</span>
       </div>
     <div id="resultNums" class="top-nums" role="list"></div>
   </div>
@@ -531,7 +531,7 @@
       <div class="card-body">
         <div style="text-align:center; padding:20px 0;">
           <div style="font-size:18px; font-weight:600; margin-bottom:8px;">小摇筛选</div>
-          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.07</div>
+          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.08</div>
           <div style="color:var(--sub-text); font-size:12px; margin-top:16px;">仅供娱乐，非投注建议</div>
         </div>
       </div>
@@ -905,7 +905,7 @@
  * @enum {any}
  */
 const CONFIG = Object.freeze({
-  VERSION: 'V260421.07',
+  VERSION: 'V260421.08',
   DATA_VERSION: 1, // 数据版本号，用于后续数据迁移
   // API配置
   API: Object.freeze({
@@ -3642,8 +3642,9 @@ const Business = {
   /**
    * 刷新历史数据
    * @param {boolean} silent - 是否静默模式（不显示提示）
+   * @param {boolean} forceRefresh - 是否强制刷新（忽略缓存）
    */
-  refreshHistory: async (silent = false) => {
+  refreshHistory: async (silent = false, forceRefresh = false) => {
     const historyList = document.getElementById('historyList');
     if(historyList && !silent) historyList.innerHTML = '<div style="padding:20px;text-align:center;">加载中...</div>';
 
@@ -3653,8 +3654,8 @@ const Business = {
       let useCache = false;
       let sortedData = [];
 
-      if (cacheResult.data && !cacheResult.expired) {
-        // 缓存未过期，直接使用缓存
+      if (cacheResult.data && !cacheResult.expired && !forceRefresh) {
+        // 缓存未过期且不是强制刷新，直接使用缓存
         sortedData = cacheResult.data;
         useCache = true;
         console.log(`[历史数据] 使用缓存，数据量: ${sortedData.length}, 缓存时间: ${new Date(Storage.get(Storage.KEYS.HISTORY_CACHE_TIME, 0)).toLocaleString()}`);
@@ -11025,7 +11026,7 @@ const EventBinder = {
       if(action === 'openAbout') Business.openAbout();
       if(action === 'checkUpdate') Business.checkUpdate();
       // 分析页面操作
-      if(action === 'refreshHistory') Business.refreshHistory();
+      if(action === 'refreshHistory') Business.refreshHistory(false, true); // 强制刷新，忽略缓存
       if(action === 'syncAnalyze') Business.syncAnalyze();
       if(action === 'syncZodiacAnalyze') Business.syncZodiacAnalyze();
       if(action === 'toggleDetail') Business.toggleDetail(actionBtn.dataset.target);
