@@ -1,5 +1,5 @@
 <!-- 
-  小摇筛选 v26.6.1
+  小摇筛选 v260421.04
   代码结构说明：
   - CONFIG: 配置常量模块
   - Utils: 工具函数模块（节流、防抖、深拷贝等）
@@ -20,7 +20,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#007AFF">
-<title>小摇筛选 v26.6.1</title>
+<title>小摇筛选 v260421.04</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,7 +35,7 @@
     <div class="top-card">
       <div class="top-title">
         <span>符合条件：<span id="resultCount" aria-live="polite">0</span> 个</span>
-        <span>v26.6.1</span>
+        <span>v260421.04</span>
       </div>
     <div id="resultNums" class="top-nums" role="list"></div>
   </div>
@@ -525,7 +525,7 @@
       <div class="card-body">
         <div style="text-align:center; padding:20px 0;">
           <div style="font-size:18px; font-weight:600; margin-bottom:8px;">小摇筛选</div>
-          <div style="color:var(--sub-text); font-size:14px;">版本：V26.6.1</div>
+          <div style="color:var(--sub-text); font-size:14px;">版本：V260421.04</div>
           <div style="color:var(--sub-text); font-size:12px; margin-top:16px;">仅供娱乐，非投注建议</div>
         </div>
       </div>
@@ -899,7 +899,7 @@
  * @enum {any}
  */
 const CONFIG = Object.freeze({
-  VERSION: 'V26.6.1',
+  VERSION: 'V260421.04',
   DATA_VERSION: 1, // 数据版本号，用于后续数据迁移
   // API配置
   API: Object.freeze({
@@ -6530,14 +6530,14 @@ const Business = {
   },
 
   /**
-   * 保存勾选状态
+   * 保存预测历史筛选状态
    */
   savePredictionHistoryFilter: () => {
     try {
-      const show10Period = document.getElementById('show10Period')?.checked ?? true;
-      const show20Period = document.getElementById('show20Period')?.checked ?? false;
-      const show30Period = document.getElementById('show30Period')?.checked ?? false;
-      const showAllPeriod = document.getElementById('showAllPeriod')?.checked ?? false;
+      const show10Period = document.querySelector('.prediction-period-btn[data-period="10"]')?.classList.contains('active') ?? true;
+      const show20Period = document.querySelector('.prediction-period-btn[data-period="20"]')?.classList.contains('active') ?? false;
+      const show30Period = document.querySelector('.prediction-period-btn[data-period="30"]')?.classList.contains('active') ?? false;
+      const showAllPeriod = document.querySelector('.prediction-period-btn[data-period="all"]')?.classList.contains('active') ?? false;
       
       const filter = {
         show10Period,
@@ -6548,12 +6548,12 @@ const Business = {
       
       Storage.set('predictionHistoryFilter', filter);
     } catch(e) {
-      console.error('保存勾选状态失败', e);
+      console.error('保存预测历史筛选状态失败', e);
     }
   },
   
   /**
-   * 加载勾选状态
+   * 加载预测历史筛选状态
    */
   loadPredictionHistoryFilter: () => {
     try {
@@ -6564,29 +6564,32 @@ const Business = {
         showAllPeriod: false
       });
       
-      const show10PeriodEl = document.getElementById('show10Period');
-      const show20PeriodEl = document.getElementById('show20Period');
-      const show30PeriodEl = document.getElementById('show30Period');
-      const showAllPeriodEl = document.getElementById('showAllPeriod');
+      // 设置按钮状态
+      const buttons = [
+        { selector: '.prediction-period-btn[data-period="10"]', active: filter.show10Period },
+        { selector: '.prediction-period-btn[data-period="20"]', active: filter.show20Period },
+        { selector: '.prediction-period-btn[data-period="30"]', active: filter.show30Period },
+        { selector: '.prediction-period-btn[data-period="all"]', active: filter.showAllPeriod }
+      ];
       
-      if(show10PeriodEl) show10PeriodEl.checked = filter.show10Period;
-      if(show20PeriodEl) show20PeriodEl.checked = filter.show20Period;
-      if(show30PeriodEl) show30PeriodEl.checked = filter.show30Period;
-      if(showAllPeriodEl) showAllPeriodEl.checked = filter.showAllPeriod;
-      
-      // 绑定事件
-      [show10PeriodEl, show20PeriodEl, show30PeriodEl, showAllPeriodEl].forEach(el => {
-        if(el) {
-          el.addEventListener('change', () => {
-            Business.savePredictionHistoryFilter();
-            Business.renderZodiacPredictionHistory();
-          });
+      buttons.forEach(({ selector, active }) => {
+        const btn = document.querySelector(selector);
+        if (btn) {
+          if (active) {
+            btn.classList.add('active');
+            btn.style.background = 'var(--primary)';
+            btn.style.color = '#fff';
+          } else {
+            btn.classList.remove('active');
+            btn.style.background = '';
+            btn.style.color = '';
+          }
         }
       });
       
       return filter;
     } catch(e) {
-      console.error('加载勾选状态失败', e);
+      console.error('加载预测历史筛选状态失败', e);
       return {
         show10Period: true,
         show20Period: false,
@@ -7033,11 +7036,9 @@ const Business = {
           record.actualNumber = actual.number;
           
           if (record.predictions && record.predictions.length > 0) {
-            // 兼容两种格式：可能是p.name或p.zodiac
-            const isHit = record.predictions.some(p => 
-              (p.zodiac && p.zodiac === actual.zodiac) || 
-              (p.name && p.name === actual.zodiac)
-            );
+            // 只检查前三生肖
+            const top3Names = (record.top3 || record.predictions || []).slice(0, 3).map(p => p.name || p.zodiac);
+            const isHit = top3Names.includes(actual.zodiac);
             record.isHit = isHit;
             record.status = isHit ? Storage.PREDICTION_STATUS.HIT : Storage.PREDICTION_STATUS.MISS;
           } else {
@@ -7161,6 +7162,293 @@ const Business = {
     }
   },
 
+  _periodStatState: {
+    currentPeriod: 10,
+    isPopupOpen: false
+  },
+
+  toggleClassificationPeriodPopup: (event) => {
+    try {
+      const container = document.getElementById('classificationStatContainer');
+      const popup = document.getElementById('classificationPeriodPopup');
+      if (!container || !popup) return;
+
+      const isOpen = Business._periodStatState.isPopupOpen;
+
+      if (isOpen) {
+        Business.closeClassificationPeriodPopup();
+      } else {
+        const rect = container.getBoundingClientRect();
+        popup.style.display = 'block';
+        popup.style.left = `${rect.left}px`;
+        popup.style.top = `${rect.bottom + 4}px`;
+        popup.style.width = `${rect.width}px`;
+
+        const periods = [
+          { value: 10, label: '10期' },
+          { value: 20, label: '20期' },
+          { value: 30, label: '30期' },
+          { value: 0, label: '全年' }
+        ];
+
+        popup.innerHTML = periods.map(p => `
+          <button class="period-option-btn" onclick="Business.selectClassificationPeriod(${p.value}, event)" 
+            data-period="${p.value}"
+            role="option"
+            aria-selected="${Business._periodStatState.currentPeriod === p.value}"
+            style="display:block;width:100%;padding:10px 16px;text-align:left;background:${Business._periodStatState.currentPeriod === p.value ? 'var(--primary)' : 'transparent'};color:${Business._periodStatState.currentPeriod === p.value ? '#fff' : 'var(--text)'};border:none;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);${p.value === 0 ? 'border-bottom:none;' : ''}">
+            ${p.label}${Business._periodStatState.currentPeriod === p.value ? ' ✓' : ''}
+          </button>
+        `).join('');
+
+        container.setAttribute('aria-expanded', 'true');
+        Business._periodStatState.isPopupOpen = true;
+
+        setTimeout(() => {
+          document.addEventListener('click', Business._handleOutsideClickForClassificationPopup);
+        }, 0);
+      }
+    } catch (e) {
+      console.error('切换分类统计弹窗失败', e);
+    }
+  },
+
+  closeClassificationPeriodPopup: () => {
+    try {
+      const container = document.getElementById('classificationStatContainer');
+      const popup = document.getElementById('classificationPeriodPopup');
+      if (popup) popup.style.display = 'none';
+      if (container) container.setAttribute('aria-expanded', 'false');
+      Business._periodStatState.isPopupOpen = false;
+      document.removeEventListener('click', Business._handleOutsideClickForClassificationPopup);
+    } catch (e) {
+      console.error('关闭分类统计弹窗失败', e);
+    }
+  },
+
+  _handleOutsideClickForClassificationPopup: (event) => {
+    const container = document.getElementById('classificationStatContainer');
+    const popup = document.getElementById('classificationPeriodPopup');
+    if (!container || !popup) return;
+
+    if (!container.contains(event.target) && !popup.contains(event.target)) {
+      Business.closeClassificationPeriodPopup();
+    }
+  },
+
+  selectClassificationPeriod: (periods, event) => {
+    try {
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+
+      Business._periodStatState.currentPeriod = periods;
+
+      const badge = document.getElementById('classificationPeriodBadge');
+      if (badge) {
+        badge.textContent = periods === 0 ? '全年' : `${periods}期`;
+      }
+
+      const content = document.getElementById('classificationStatContent');
+      if (content) {
+        content.innerHTML = Business._renderClassificationStats(periods);
+      }
+
+      Business.closeClassificationPeriodPopup();
+
+      const popup = document.getElementById('classificationPeriodPopup');
+      if (popup) {
+        popup.querySelectorAll('.period-option-btn').forEach(btn => {
+          const btnPeriod = parseInt(btn.getAttribute('data-period'));
+          const isSelected = btnPeriod === periods;
+          btn.style.background = isSelected ? 'var(--primary)' : 'transparent';
+          btn.style.color = isSelected ? '#fff' : 'var(--text)';
+          btn.setAttribute('aria-selected', isSelected);
+          btn.innerHTML = `${btnPeriod === 0 ? '全年' : `${btnPeriod}期`}${isSelected ? ' ✓' : ''}`;
+        });
+      }
+    } catch (e) {
+      console.error('选择分类统计周期失败', e);
+    }
+  },
+
+  _getClassificationStatsByPeriod: (periods) => {
+    try {
+      const zodiacHistory = Storage.get(Storage.KEYS.ZODIAC_PREDICTION_HISTORY, []);
+      const mlHistory = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+      const selectedZodiacHistory = StateManager._state.selectedZodiacHistory || [];
+      const state = StateManager._state;
+      const historyData = state.analysis?.historyData || [];
+
+      const expectToZodiac = {};
+      historyData.forEach(item => {
+        if (item.expect && item.zodiac) {
+          const zodArrRaw = item.zodiac.split(',');
+          const zodArr = zodArrRaw.map(z => CONFIG.ANALYSIS.ZODIAC_TRAD_TO_SIMP[z] || z);
+          expectToZodiac[item.expect] = zodArr[6] || '';
+        }
+      });
+
+      const processHistory = (history) => {
+        const seen = new Set();
+        const uniqueHistory = history.filter(item => {
+          if (item.expect && seen.has(item.expect)) return false;
+          if (item.expect) seen.add(item.expect);
+          return true;
+        });
+
+        const sortedHistory = [...uniqueHistory].sort((a, b) => b.expect - a.expect);
+        return periods === 0 ? sortedHistory : sortedHistory.slice(0, periods);
+      };
+
+      const calculateStats = (history) => {
+        let total = 0;
+        let hits = 0;
+        let misses = 0;
+        let pending = 0;
+
+        history.forEach(item => {
+          total++;
+          if (item.status === Storage.PREDICTION_STATUS.PENDING) {
+            pending++;
+          } else if (item.status === Storage.PREDICTION_STATUS.HIT) {
+            hits++;
+          } else if (item.status === Storage.PREDICTION_STATUS.MISS) {
+            misses++;
+          }
+        });
+
+        const completed = total - pending;
+        const hitRate = completed > 0 ? (hits / completed * 100).toFixed(1) : 0;
+
+        return {
+          total,
+          hits,
+          misses,
+          pending,
+          completed,
+          hitRate
+        };
+      };
+
+      return {
+        zodiac: calculateStats(processHistory(zodiacHistory)),
+        ml: calculateStats(processHistory(mlHistory)),
+        selected: calculateStats(processHistory(selectedZodiacHistory))
+      };
+    } catch (e) {
+      console.error('获取分类统计失败', e);
+      const emptyStats = { total: 0, hits: 0, misses: 0, pending: 0, completed: 0, hitRate: 0 };
+      return {
+        zodiac: emptyStats,
+        ml: emptyStats,
+        selected: emptyStats
+      };
+    }
+  },
+
+  _renderClassificationStats: (periods) => {
+    try {
+      const stats = Business._getClassificationStatsByPeriod(periods);
+
+      let html = '';
+
+      // 生肖预测统计
+      if (stats.zodiac.total > 0) {
+        html += `
+          <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">🔮 生肖预测</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-weight:600;">${stats.zodiac.total} 次</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">命中</span>
+              <span style="color:#4CAF50;font-weight:600;">${stats.zodiac.hits}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">未中</span>
+              <span style="color:#F44336;font-weight:600;">${stats.zodiac.misses}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">待开奖</span>
+              <span style="color:#FF9800;font-weight:600;">${stats.zodiac.pending}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid var(--border);">
+              <span style="color:var(--text);font-weight:600;">命中率</span>
+              <span style="color:var(--primary);font-weight:700;font-size:16px;">${stats.zodiac.hitRate}%</span>
+            </div>
+          </div>
+        `;
+      }
+
+      // ML预测统计
+      if (stats.ml.total > 0) {
+        html += `
+          <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">🤖 ML预测</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-weight:600;">${stats.ml.total} 次</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">命中</span>
+              <span style="color:#4CAF50;font-weight:600;">${stats.ml.hits}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">未中</span>
+              <span style="color:#F44336;font-weight:600;">${stats.ml.misses}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">待开奖</span>
+              <span style="color:#FF9800;font-weight:600;">${stats.ml.pending}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid var(--border);">
+              <span style="color:var(--text);font-weight:600;">命中率</span>
+              <span style="color:var(--primary);font-weight:700;font-size:16px;">${stats.ml.hitRate}%</span>
+            </div>
+          </div>
+        `;
+      }
+
+      // 精选生肖统计
+      if (stats.selected.total > 0) {
+        html += `
+          <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">✨ 精选生肖</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-weight:600;">${stats.selected.total} 次</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">命中</span>
+              <span style="color:#4CAF50;font-weight:600;">${stats.selected.hits}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">未中</span>
+              <span style="color:#F44336;font-weight:600;">${stats.selected.misses}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:var(--sub-text);">待开奖</span>
+              <span style="color:#FF9800;font-weight:600;">${stats.selected.pending}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid var(--border);">
+              <span style="color:var(--text);font-weight:600;">命中率</span>
+              <span style="color:var(--primary);font-weight:700;font-size:16px;">${stats.selected.hitRate}%</span>
+            </div>
+          </div>
+        `;
+      }
+
+      if (html === '') {
+        html = '<div style="text-align:center;color:var(--sub-text);padding:20px;grid-column:1/-1;">暂无分类统计数据</div>';
+      }
+
+      return html;
+    } catch (e) {
+      console.error('渲染分类统计失败', e);
+      return '<div style="text-align:center;color:var(--sub-text);padding:20px;grid-column:1/-1;">数据加载失败</div>';
+    }
+  },
+
   /**
    * 显示预测历史详情
    * @param {number} idx - 记录索引
@@ -7247,6 +7535,20 @@ const Business = {
           <div style="max-height:300px;overflow-y:auto;">
             ${predictionsHtml || '<div style="text-align:center;color:var(--sub-text);padding:20px;">暂无预测数据</div>'}
           </div>
+          
+          <!-- 分期数统计 -->
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+            <div style="font-size:14px;color:var(--text);margin-bottom:12px;font-weight:500;">📊 分期数统计</div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+              <button onclick="Business.showPeriodStatInDetail(this, 10)" class="period-stat-btn" data-periods="10" style="flex:1;padding:8px 12px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">10期</button>
+              <button onclick="Business.showPeriodStatInDetail(this, 20)" class="period-stat-btn" data-periods="20" style="flex:1;padding:8px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;">20期</button>
+              <button onclick="Business.showPeriodStatInDetail(this, 30)" class="period-stat-btn" data-periods="30" style="flex:1;padding:8px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;">30期</button>
+              <button onclick="Business.showPeriodStatInDetail(this, 0)" class="period-stat-btn" data-periods="0" style="flex:1;padding:8px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;">全年</button>
+            </div>
+            <div id="periodStatDetail" style="font-size:13px;color:var(--sub-text);line-height:1.6;">
+              点击上方按钮查看不同期数的统计
+            </div>
+          </div>
         </div>
       `;
       
@@ -7272,6 +7574,67 @@ const Business = {
       Toast.show('已清空ML预测历史');
     } catch (e) {
       console.error('清空ML预测历史失败', e);
+    }
+  },
+
+  /**
+   * 在详情弹窗中显示分期数统计
+   * @param {HTMLElement} btn - 按钮元素
+   * @param {number} periods - 期数（0表示全年）
+   */
+  showPeriodStatInDetail: (btn, periods) => {
+    try {
+      // 更新按钮样式
+      document.querySelectorAll('.period-stat-btn').forEach(b => {
+        b.style.background = 'var(--bg)';
+        b.style.color = 'var(--text)';
+        b.style.border = '1px solid var(--border)';
+      });
+      btn.style.background = 'var(--primary)';
+      btn.style.color = '#fff';
+      btn.style.border = 'none';
+      
+      const state = StateManager._state;
+      const historyData = state.analysis.historyData || [];
+      
+      // 获取前3条预测记录
+      const mlHistory = Storage.get(Storage.KEYS.ML_PREDICTION_HISTORY, []);
+      const targetRecords = periods === 0 ? mlHistory : mlHistory.slice(0, periods);
+      
+      if (targetRecords.length === 0) {
+        document.getElementById('periodStatDetail').innerHTML = '暂无数据';
+        return;
+      }
+      
+      // 统计
+      let total = targetRecords.length;
+      let hits = 0;
+      let pending = 0;
+      let miss = 0;
+      
+      targetRecords.forEach(r => {
+        if (r.status === Storage.PREDICTION_STATUS.HIT) hits++;
+        else if (r.status === Storage.PREDICTION_STATUS.MISS) miss++;
+        else if (r.status === Storage.PREDICTION_STATUS.PENDING) pending++;
+      });
+      
+      const hitRate = total > 0 ? ((hits / (total - pending)) * 100).toFixed(1) + '%' : '-';
+      
+      let html = `<div style="margin-bottom:8px;">共 ${total} 条记录：</div>`;
+      html += `<div style="display:flex;gap:16px;margin-bottom:8px;">`;
+      html += `<span style="color:#4CAF50;">命中 ${hits}</span>`;
+      html += `<span style="color:#F44336;">未中 ${miss}</span>`;
+      html += `<span style="color:#FF9800;">待开奖 ${pending}</span>`;
+      html += `</div>`;
+      html += `<div>命中率：<strong style="color:var(--primary);">${hitRate}</strong></div>`;
+      
+      if (periods === 0) {
+        html += `<div style="margin-top:8px;font-size:12px;color:var(--sub-text);">* 全年数据包含所有已预测期数</div>`;
+      }
+      
+      document.getElementById('periodStatDetail').innerHTML = html;
+    } catch (e) {
+      console.error('显示分期数统计失败', e);
     }
   },
 
@@ -7311,85 +7674,48 @@ const Business = {
       if (stats.byType.zodiac.total > 0 || stats.byType.ml.total > 0 || stats.byType.selected.total > 0) {
         html += `
           <div style="margin-top:16px;">
-            <div style="font-size:14px;color:var(--text);font-weight:600;margin-bottom:12px;">📌 分类统计（各类别独立计算）</div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
-              <!-- 生肖预测统计 -->
-              <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
-                <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">🔮 生肖预测</div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                  <span style="font-weight:600;">${stats.byType.zodiac.total} 次</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">命中</span>
-                  <span style="color:#4CAF50;font-weight:600;">${stats.byType.zodiac.hits}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">未中</span>
-                  <span style="color:#F44336;font-weight:600;">${stats.byType.zodiac.misses}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">待开奖</span>
-                  <span style="color:#FF9800;font-weight:600;">${stats.byType.zodiac.pending}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid var(--border);">
-                  <span style="color:var(--text);font-weight:600;">命中率</span>
-                  <span style="color:var(--primary);font-weight:700;font-size:16px;">${stats.byType.zodiac.hitRate}%</span>
-                </div>
+            <div id="classificationStatContainer" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;cursor:pointer;" onclick="Business.toggleClassificationPeriodPopup(event)" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="分类统计：点击选择统计周期">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:14px;color:var(--text);font-weight:600;">📌 分类统计（各类别独立计算）</span>
+                <span id="classificationPeriodBadge" style="padding:2px 8px;background:var(--primary);color:#fff;border-radius:10px;font-size:12px;">10期</span>
               </div>
-              
-              <!-- ML预测统计 -->
-              <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
-                <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">🤖 ML预测</div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                  <span style="font-weight:600;">${stats.byType.ml.total} 次</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">命中</span>
-                  <span style="color:#4CAF50;font-weight:600;">${stats.byType.ml.hits}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">未中</span>
-                  <span style="color:#F44336;font-weight:600;">${stats.byType.ml.misses}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">待开奖</span>
-                  <span style="color:#FF9800;font-weight:600;">${stats.byType.ml.pending}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid var(--border);">
-                  <span style="color:var(--text);font-weight:600;">命中率</span>
-                  <span style="color:var(--primary);font-weight:700;font-size:16px;">${stats.byType.ml.hitRate}%</span>
-                </div>
-              </div>
-              
-              <!-- 精选生肖统计 -->
-              <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
-                <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">✨ 精选生肖</div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                  <span style="font-weight:600;">${stats.byType.selected.total} 次</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">命中</span>
-                  <span style="color:#4CAF50;font-weight:600;">${stats.byType.selected.hits}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">未中</span>
-                  <span style="color:#F44336;font-weight:600;">${stats.byType.selected.misses}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                  <span style="color:var(--sub-text);">待开奖</span>
-                  <span style="color:#FF9800;font-weight:600;">${stats.byType.selected.pending}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid var(--border);">
-                  <span style="color:var(--text);font-weight:600;">命中率</span>
-                  <span style="color:var(--primary);font-weight:700;font-size:16px;">${stats.byType.selected.hitRate}%</span>
-                </div>
-              </div>
+              <span style="color:var(--sub-text);font-size:12px;">点击选择 ▾</span>
             </div>
+            <div id="classificationStatContent" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;"></div>
+            <div id="classificationPeriodPopup" class="period-popup" style="display:none;position:absolute;z-index:1000;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);min-width:200px;" role="dialog" aria-label="选择统计周期"></div>
           </div>
         `;
       }
 
       bodyEl.innerHTML = html;
+      
+      const content = document.getElementById('classificationStatContent');
+      if (content) {
+        content.innerHTML = Business._renderClassificationStats(Business._periodStatState.currentPeriod);
+      }
+
+      const container = document.getElementById('classificationStatContainer');
+      if (container) {
+        container.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            Business.toggleClassificationPeriodPopup(e);
+          } else if (e.key === 'Escape' && Business._periodStatState.isPopupOpen) {
+            Business.closeClassificationPeriodPopup();
+          }
+        });
+      }
+
+      const popup = document.getElementById('classificationPeriodPopup');
+      if (popup) {
+        popup.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            Business.closeClassificationPeriodPopup();
+            const container = document.getElementById('classificationStatContainer');
+            if (container) container.focus();
+          }
+        });
+      }
     } catch (e) {
       console.error('渲染预测统计失败', e);
     }
@@ -7598,10 +7924,10 @@ const Business = {
         finalActiveValues = [activeValues[0]];
       }
     }
-    // 预测历史期数按钮允许多选
-    if (selector === '.prediction-period-btn') {
-      finalActiveValues = activeValues;
-    }
+    // 预测历史期数按钮也只允许单选
+    // if (selector === '.prediction-period-btn') {
+    //   finalActiveValues = activeValues;
+    // }
     
     buttons.forEach(btn => {
       const value = btn.getAttribute(dataAttr);
@@ -7664,10 +7990,10 @@ const Business = {
   },
 
   /**
-   * 全选预测历史的期数
+   * 全选预测历史的期数（现在只选择10期，因为只允许单选）
    */
   selectAllPredictionPeriods: () => {
-    Business.setButtonGroupState('.prediction-period-btn', ['10', '20', '30', 'all'], 'data-period');
+    Business.setButtonGroupState('.prediction-period-btn', ['10'], 'data-period');
     Business.savePredictionHistoryFilter();
     Business.renderZodiacPredictionHistory();
     Business.togglePanel('predictionFiltersPanel');
@@ -10570,7 +10896,7 @@ const EventBinder = {
     // 11. 预测历史期数按钮
     const predictionPeriodBtn = target.closest('.prediction-period-btn[data-period]');
     if(predictionPeriodBtn){
-      Business.toggleButtonState(predictionPeriodBtn);
+      Business.toggleRadioButtonGroup(predictionPeriodBtn, '.prediction-period-btn');
       Business.savePredictionHistoryFilter();
       Business.renderZodiacPredictionHistory();
       return;
