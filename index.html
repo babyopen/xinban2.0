@@ -3475,13 +3475,13 @@ const Business = {
             }
             
             // 转换为API返回的格式
-            if (item.expect && item.openCode) {
+            if (item.period && item.openCode) {
               data.push({
-                expect: item.expect,
+                expect: item.period,
                 openCode: item.openCode,
                 zodiac: item.zodiac || '',
-                date: item.date || '',
-                time: item.time || ''
+                date: item.timestamp || '',
+                time: item.timestamp || ''
               });
             }
           }
